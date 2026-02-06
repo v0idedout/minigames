@@ -1,0 +1,192 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
+
+body {
+    background-color: #050505;
+    /* CRT Scanline effect */
+    background-image: 
+        linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+        linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    background-size: 100% 2px, 3px 100%;
+    color: #e0e0e0;
+    font-family: 'VT323', monospace; /* Retro font fallback */
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    overflow-x: hidden;
+    text-shadow: 2px 2px 0px #000;
+}
+
+/* Subtle flicking overlay */
+body::after {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0; 
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: rgba(18, 16, 16, 0.1);
+    opacity: 0;
+    z-index: 2;
+    pointer-events: none;
+    animation: flicker 0.15s infinite;
+}
+
+header {
+    text-align: center;
+    margin-top: 50px;
+    margin-bottom: 50px;
+    z-index: 10;
+    position: relative;
+    animation: none; /* Removed old animation */
+}
+
+h1 {
+    font-family: 'Press Start 2P', cursive;
+    font-size: 3rem;
+    margin: 0;
+    color: #ff00de; /* Neon Pink */
+    text-transform: uppercase;
+    text-shadow: 
+        0 0 5px #ff00de,
+        0 0 10px #ff00de,
+        0 0 20px #ff00de,
+        0 0 40px #ff00aa,
+        4px 4px 0px #000000; /* Drop shadow for depth */
+    animation: pulsate 1.5s infinite alternate;
+    line-height: 1.5;
+    letter-spacing: normal;
+}
+
+header p {
+    font-family: 'VT323', monospace;
+    font-size: 2rem;
+    color: #00ffcc; /* Neon Cyan */
+    margin-top: 20px;
+    text-shadow: 0 0 5px #00ffcc;
+    animation: blink 1s step-end infinite;
+}
+
+.arcade-cabinet {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 40px;
+    max-width: 1200px;
+    padding: 20px;
+    z-index: 10;
+}
+
+.game-card {
+    background: #111;
+    border: 4px solid #333;
+    border-radius: 4px;
+    width: 320px;
+    height: 240px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-decoration: none;
+    color: white;
+    position: relative;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: 0 0 10px rgba(0,0,0,0.8);
+    overflow: hidden;
+}
+
+/* CRT Screen reflection inside the card */
+.game-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.6) 90%);
+    pointer-events: none;
+    opacity: 0.6;
+}
+
+.game-card:hover {
+    transform: scale(1.05) translateY(-10px);
+    border-color: #00ffcc;
+    box-shadow: 
+        0 0 20px #00ffcc,
+        inset 0 0 20px #00ffcc;
+    z-index: 100;
+    background: #1a1a1a;
+}
+
+.game-card h2 {
+    font-family: 'Press Start 2P', cursive;
+    font-size: 1.2rem;
+    margin-bottom: 20px;
+    color: #ffd700; /* Gold */
+    text-shadow: 3px 3px 0 #b84d09;
+    z-index: 1;
+    text-align: center;
+    line-height: 1.5;
+    padding: 0 10px;
+}
+
+.game-card p {
+    font-family: 'VT323', monospace;
+    font-size: 1.5rem;
+    color: #e0e0e0;
+    z-index: 1;
+    text-shadow: 0 0 5px black;
+}
+
+.game-card:hover::before {
+    transform: none; /* Reset old animation */
+    /* Could add scanline movement here if desired */
+}
+/* Removed old .game-card::before style entirely to replace with new clean style */
+.game-card::before {
+  display: none;
+}
+
+.game-card:hover h2 {
+    color: #fff;
+    text-shadow: 0 0 10px #00ffcc;
+}
+
+/* Animations */
+@keyframes pulsate {
+    0% { transform: scale(1); text-shadow: 0 0 10px #ff00de, 0 0 20px #ff00de; }
+    100% { transform: scale(1.02); text-shadow: 0 0 20px #ff00de, 0 0 40px #ff00de, 0 0 60px #ff00de; }
+}
+
+@keyframes blink {
+    50% { opacity: 0; }
+}
+
+@keyframes flicker {
+    0% { opacity: 0.02; }
+    5% { opacity: 0.05; }
+    10% { opacity: 0.01; }
+    15% { opacity: 0.06; }
+    20% { opacity: 0.02; }
+    30% { opacity: 0.02; }
+    40% { opacity: 0.01; }
+    50% { opacity: 0.02; }
+    60% { opacity: 0; }
+    70% { opacity: 0.05; }
+    80% { opacity: 0; }
+    90% { opacity: 0.02; }
+    100% { opacity: 0.05; }
+}
+
+footer {
+    margin-top: auto;
+    padding: 20px;
+    font-size: 1.2rem;
+    color: #666;
+    font-family: 'VT323', monospace;
+    text-align: center;
+    width: 100%;
+    border-top: 1px solid #333;
+    background: #000;
+    z-index: 10;
+}

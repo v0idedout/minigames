@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Paths of Pain</title>
+    <style>
+        body {
+            background: #1a1a1a;
+            color: #fff;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        #ui {
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        canvas {
+            border: 4px solid #333;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            background: #000;
+        }
+        .stats { font-size: 1.2rem; color: #ff3e3e; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <h1>PATHS OF PAIN</h1>
+        <div class="stats">TIME: <span id="timer">0.00</span>s</div>
+        <p>Use Arrow Keys to Dash. Reach the Green Portal.</p>
+    </div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const timerEl = document.getElementById("timer");
+
+// Game Constants
+const TILE_SIZE = 40;
+const COLS = 12;
+const ROWS = 12;
+canvas.width = COLS * TILE_SIZE;
+canvas.height = ROWS * TILE_SIZE;
+
+// Map Legend: 1=Wall, 0=Empty, S=Spikes, L=Lava, G=Goal, P=Player Start
+const map = [
+    [1,1,1,1,1,1,1,1,1,1,1,1],
+    [1,P,0,0,1,0,0,0,0,S,0,1],
+    [1,1,1,0,1,0,1,1,1,1,0,1],
+    [1,0,0,0,0,0,1,0,0,0,0,1],
+    [1,0,1,1,1,S,1,0,1,1,L,1],
+    [1,0,1,0,0,0,0,0,1,0,0,1],
+    [1,S,1,0,1,1,1,0,1,0,1,1],
+    [1,0,0,0,1,L,0,0,1,0,0,1],
+    [1,1,1,0,1,0,1,1,1,1,0,1],
+    [1,0,0,S,0,0,0,0,L,0,0,1],
+    [1,0,1,1,1,1,1,0,1,1,G,1],
+    [1,1,1,1,1,1,1,1,1,1,1,1],
+];
+
+let player = { x: 1, y: 1, targetX: 1, targetY: 1, vx: 0, vy: 0, moving: false };
+let startTime = Date.now();
+let gameOver = false;
+
+function drawMap() {
+    for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+            let tile = map[r][c];
+            if (tile === 1) ctx.fillStyle = "#444"; // Wall
+            else if (tile === 'S') ctx.fillStyle = "#ff9900"; // Spikes
+            else if (tile === 'L') ctx.fillStyle = "#ff0000"; // Lava
+            else if (tile === 'G') ctx.fillStyle = "#00ff00"; // Goal
+            else ctx.fillStyle = "#111"; // Floor
+            
+            ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            
+            // Decorative Grid
+            ctx.strokeStyle = "#222";
+            ctx.strokeRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        }
+    }
+}
+
+function update() {
+    if (gameOver) return;
+
+    // Movement Logic (Sliding)
+    if (player.moving) {
+        let nextX = player.x + player.vx;
+        let nextY = player.y + player.vy;
+
+        if (map[nextY][nextX] !== 1) {
+            player.x = nextX;
+            player.y = nextY;
+            checkCollision(nextX, nextY);
+        } else {
+            player.moving = false;
+            player.vx = 0;
+            player.vy = 0;
+        }
+    }
+
+    timerEl.innerText = ((Date.now() - startTime) / 1000).toFixed(2);
+}
+
+function checkCollision(x, y) {
+    let tile = map[y][x];
+    if (tile === 'S' || tile === 'L') {
+        alert("YOU PERISHED IN THE PATHS OF PAIN!");
+        resetPlayer();
+    } else if (tile === 'G') {
+        gameOver = true;
+        alert(`ESCAPED! Final Time: ${timerEl.innerText}s`);
+        location.reload();
+    }
+}
+
+function resetPlayer() {
+    player.x = 1;
+    player.y = 1;
+    player.moving = false;
+    startTime = Date.now();
+}
+
+function drawPlayer() {
+    ctx.fillStyle = "#00ffff";
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#00ffff";
+    ctx.fillRect(player.x * TILE_SIZE + 5, player.y * TILE_SIZE + 5, TILE_SIZE - 10, TILE_SIZE - 10);
+    ctx.shadowBlur = 0;
+}
+
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawMap();
+    update();
+    drawPlayer();
+    requestAnimationFrame(loop);
+}
+
+window.addEventListener("keydown", (e) => {
+    if (player.moving) return;
+
+    if (e.key === "ArrowUp") { player.vy = -1; player.moving = true; }
+    if (e.key === "ArrowDown") { player.vy = 1; player.moving = true; }
+    if (e.key === "ArrowLeft") { player.vx = -1; player.moving = true; }
+    if (e.key === "ArrowRight") { player.vx = 1; player.moving = true; }
+});
+
+loop();
+</script>
+</body>
+</html>
