@@ -45,117 +45,310 @@ const timerEl = document.getElementById("timer");
 
 // Game Constants
 const TILE_SIZE = 40;
-const COLS = 12;
-const ROWS = 12;
-canvas.width = COLS * TILE_SIZE;
-canvas.height = ROWS * TILE_SIZE;
+const VIEWPORT_WIDTH = window.innerWidth;
+const VIEWPORT_HEIGHT = window.innerHeight;
 
-// Map Legend: 1=Wall, 0=Empty, S=Spikes, L=Lava, G=Goal, P=Player Start
-const map = [
-    [1,1,1,1,1,1,1,1,1,1,1,1],
-    [1,P,0,0,1,0,0,0,0,S,0,1],
-    [1,1,1,0,1,0,1,1,1,1,0,1],
-    [1,0,0,0,0,0,1,0,0,0,0,1],
-    [1,0,1,1,1,S,1,0,1,1,L,1],
-    [1,0,1,0,0,0,0,0,1,0,0,1],
-    [1,S,1,0,1,1,1,0,1,0,1,1],
-    [1,0,0,0,1,L,0,0,1,0,0,1],
-    [1,1,1,0,1,0,1,1,1,1,0,1],
-    [1,0,0,S,0,0,0,0,L,0,0,1],
-    [1,0,1,1,1,1,1,0,1,1,G,1],
-    [1,1,1,1,1,1,1,1,1,1,1,1],
-];
+// Force full screen canvas
+canvas.width = VIEWPORT_WIDTH;
+canvas.height = VIEWPORT_HEIGHT;
+canvas.style.position = 'absolute';
+canvas.style.top = '0';
+canvas.style.left = '0';
+canvas.style.zIndex = '-1'; // Behind UI
 
-let player = { x: 1, y: 1, targetX: 1, targetY: 1, vx: 0, vy: 0, moving: false };
-let startTime = Date.now();
-let gameOver = false;
+// Maze Generation Constants
+const MAZE_COLS = 50; 
+const MAZE_ROWS = 50;
+const TOTAL_WIDTH = MAZE_COLS * TILE_SIZE;
+const TOTAL_HEIGHT = MAZE_ROWS * TILE_SIZE;
 
-function drawMap() {
-    for (let r = 0; r < ROWS; r++) {
-        for (let c = 0; c < COLS; c++) {
-            let tile = map[r][c];
-            if (tile === 1) ctx.fillStyle = "#444"; // Wall
-            else if (tile === 'S') ctx.fillStyle = "#ff9900"; // Spikes
-            else if (tile === 'L') ctx.fillStyle = "#ff0000"; // Lava
-            else if (tile === 'G') ctx.fillStyle = "#00ff00"; // Goal
-            else ctx.fillStyle = "#111"; // Floor
-            
-            ctx.fillRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
-            
-            // Decorative Grid
-            ctx.strokeStyle = "#222";
-            ctx.strokeRect(c * TILE_SIZE, r * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+let startTime; 
+let gameInterval;
+let isPlaying = false;
+let map = [];
+let player = { x: 0, y: 0, vx: 0, vy: 0, speed: 5, size: 20 };
+
+// Camera
+let camera = { x: 0, y: 0 };
+
+function lerp(start, end, amt) {
+    return (1 - amt) * start + amt * end;
+}
+
+function generateMaze() {
+    // Randomized Prim's Algorithm or DFS. Let's do a simple recursive backtracker for a maze.
+    // 1 = Wall, 0 = Path, 2 = Spike, 3 = End, 4 = Start
+    map = [];
+
+    // Initialize with all walls
+    for(let r=0; r<MAZE_ROWS; r++) {
+        let row = [];
+        for(let c=0; c<MAZE_COLS; c++) {
+            row.push(1);
+        }
+        map.push(row);
+    }
+    
+    // Recursive Backtracker
+    const stack = [];
+    const startX = 1;
+    const startY = 1;
+    
+    map[startY][startX] = 0;
+    stack.push({x: startX, y: startY});
+
+    const directions = [[0, 2], [0, -2], [2, 0], [-2, 0]]; // Jump 2 to leave walls between paths
+
+    while(stack.length > 0) {
+        const current = stack[stack.length - 1];
+        const {x, y} = current;
+        
+        // Find unvisited neighbors
+        const neighbors = [];
+        for (let d of directions) {
+            const nx = x + d[0];
+            const ny = y + d[1];
+            if (nx > 0 && nx < MAZE_COLS - 1 && ny > 0 && ny < MAZE_ROWS - 1 && map[ny][nx] === 1) {
+                neighbors.push({nx, ny, dx: d[0]/2, dy: d[1]/2});
+            }
+        }
+
+        if (neighbors.length > 0) {
+            const chosen = neighbors[Math.floor(Math.random() * neighbors.length)];
+            // Knock down wall between
+            map[y + chosen.dy][x + chosen.dx] = 0;
+            // Mark neighbor as visited path
+            map[chosen.ny][chosen.nx] = 0;
+            stack.push({x: chosen.nx, y: chosen.ny});
+        } else {
+            stack.pop();
+        }
+    }
+    
+    // Add Start and End
+    map[1][1] = 4; // Start
+    player.x = 1 * TILE_SIZE + TILE_SIZE/2;
+    player.y = 1 * TILE_SIZE + TILE_SIZE/2;
+
+    // Pick a random spot far away for End
+    let endX = MAZE_COLS - 2;
+    let endY = MAZE_ROWS - 2;
+    // Walk back until we find a path if it's a wall (though generation usually ensures corners are reachable if odd dimensions, let's differ slightly if not)
+    while(map[endY][endX] === 1) {
+         endX--;
+         if (endX < 1) { endX = MAZE_COLS - 2; endY--; }
+    }
+    map[endY][endX] = 3;
+
+    // Add Spikes randomly on paths
+    for(let r=1; r<MAZE_ROWS-1; r++) {
+        for(let c=1; c<MAZE_COLS-1; c++) {
+            if(map[r][c] === 0 && Math.random() < 0.1) { // 10% chance
+                 // Ensure we don't block Start/End immediate area
+                 if (Math.abs(r-1) + Math.abs(c-1) > 2 && Math.abs(r-endY) + Math.abs(c-endX) > 2) {
+                     map[r][c] = 2; // Spike
+                 }
+            }
         }
     }
 }
+
+function loadLevel() {
+    generateMaze();
+    resetTimer();
+}
+
+function resetTimer() {
+    startTime = Date.now();
+    if (gameInterval) clearInterval(gameInterval);
+    gameInterval = setInterval(() => {
+        const elapsed = (Date.now() - startTime) / 1000;
+        timerEl.innerText = elapsed.toFixed(2);
+    }, 50);
+}
+
+// Input handling
+const keys = {};
+document.addEventListener('keydown', e => {
+    keys[e.code] = true;
+    if(!isPlaying && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) {
+        isPlaying = true;
+        resetTimer();
+    }
+});
+document.addEventListener('keyup', e => keys[e.code] = false);
 
 function update() {
-    if (gameOver) return;
+    // Movement
+    if (keys['ArrowUp']) player.vy = -player.speed;
+    else if (keys['ArrowDown']) player.vy = player.speed;
+    else player.vy = 0;
 
-    // Movement Logic (Sliding)
-    if (player.moving) {
-        let nextX = player.x + player.vx;
-        let nextY = player.y + player.vy;
+    if (keys['ArrowLeft']) player.vx = -player.speed;
+    else if (keys['ArrowRight']) player.vx = player.speed;
+    else player.vx = 0;
 
-        if (map[nextY][nextX] !== 1) {
+    // Apply movement & collision
+    movePlayer(player.vx, 0); // X axis
+    movePlayer(0, player.vy); // Y axis
+
+    checkHazards();
+    checkWin();
+
+    // Camera follow
+    // Target position is player centered
+    const targetCamX = player.x - canvas.width / 2;
+    const targetCamY = player.y - canvas.height / 2;
+    
+    // Smooth lerp
+    camera.x = lerp(camera.x, targetCamX, 0.1);
+    camera.y = lerp(camera.y, targetCamY, 0.1);
+
+    // Bounds clamping (don't show outside the maze world technically, but maybe infinite void is fine visually)
+    camera.x = Math.max(0, Math.min(camera.x, TOTAL_WIDTH - canvas.width));
+    camera.y = Math.max(0, Math.min(camera.y, TOTAL_HEIGHT - canvas.height));
+}
+
+function movePlayer(vx, vy) {
+    const nextX = player.x + vx;
+    const nextY = player.y + vy;
+    const margin = player.size / 2;
+
+    // Map bounds check
+    const leftCol = Math.floor((nextX - margin) / TILE_SIZE);
+    const rightCol = Math.floor((nextX + margin) / TILE_SIZE);
+    const topRow = Math.floor((nextY - margin) / TILE_SIZE);
+    const bottomRow = Math.floor((nextY + margin) / TILE_SIZE);
+
+    // Collision Check (Walls = 1)
+    if (!isSolid(leftCol, topRow) && !isSolid(rightCol, topRow) &&
+        !isSolid(leftCol, bottomRow) && !isSolid(rightCol, bottomRow)) {
             player.x = nextX;
             player.y = nextY;
-            checkCollision(nextX, nextY);
-        } else {
-            player.moving = false;
-            player.vx = 0;
-            player.vy = 0;
+    }
+}
+
+function isSolid(c, r) {
+    if (r < 0 || r >= MAZE_ROWS || c < 0 || c >= MAZE_COLS) return true;
+    return map[r][c] === 1;
+}
+
+function isHazard(c, r) {
+    if (r < 0 || r >= MAZE_ROWS || c < 0 || c >= MAZE_COLS) return false;
+    return map[r][c] === 2; // Hit spike
+}
+
+function checkHazards() {
+    const margin = player.size / 3; 
+    const leftCol = Math.floor((player.x - margin) / TILE_SIZE);
+    const rightCol = Math.floor((player.x + margin) / TILE_SIZE);
+    const topRow = Math.floor((player.y - margin) / TILE_SIZE);
+    const bottomRow = Math.floor((player.y + margin) / TILE_SIZE);
+
+    if (isHazard(leftCol, topRow) || isHazard(rightCol, topRow) ||
+        isHazard(leftCol, bottomRow) || isHazard(rightCol, bottomRow)) {
+        die();
+    }
+}
+
+function checkWin() {
+    const c = Math.floor(player.x / TILE_SIZE);
+    const r = Math.floor(player.y / TILE_SIZE);
+    if (map[r][c] === 3) {
+        alert("You found the exit! Loading next maze...");
+        loadLevel();
+    }
+}
+
+function die() {
+    // Return to start
+    player.x = 1.5 * TILE_SIZE;
+    player.y = 1.5 * TILE_SIZE;
+    camera.x = 0; 
+    camera.y = 0;
+    
+    // Flash
+    ctx.fillStyle = "red";
+    ctx.fillRect(0,0,canvas.width, canvas.height);
+}
+
+function draw() {
+    // Clear Screen
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.save();
+    // Translate by camera
+    ctx.translate(-camera.x, -camera.y);
+
+    // Only draw visible tiles for performance optimization
+    const startCol = Math.floor(camera.x / TILE_SIZE);
+    const endCol = startCol + (canvas.width / TILE_SIZE) + 1;
+    const startRow = Math.floor(camera.y / TILE_SIZE);
+    const endRow = startRow + (canvas.height / TILE_SIZE) + 1;
+
+    for (let r = startRow; r <= endRow; r++) {
+        for (let c = startCol; c <= endCol; c++) {
+            if (r < 0 || r >= MAZE_ROWS || c < 0 || c >= MAZE_COLS) continue;
+
+            const tile = map[r][c];
+            const x = c * TILE_SIZE;
+            const y = r * TILE_SIZE;
+
+            if (tile === 1) { // Wall
+                ctx.fillStyle = '#444';
+                ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                ctx.strokeStyle = '#222';
+                ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
+            } else if (tile === 2) { // Spike
+                ctx.fillStyle = '#ff0000';
+                ctx.beginPath();
+                ctx.moveTo(x + TILE_SIZE/2, y + 5);
+                ctx.lineTo(x + TILE_SIZE - 5, y + TILE_SIZE - 5);
+                ctx.lineTo(x + 5, y + TILE_SIZE - 5);
+                ctx.fill();
+            } else if (tile === 3) { // End
+                ctx.fillStyle = '#00ff00';
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#00ff00';
+                ctx.fillRect(x+5, y+5, TILE_SIZE-10, TILE_SIZE-10);
+                ctx.shadowBlur = 0;
+            } else if (tile === 4) { // Start
+                 ctx.fillStyle = '#0000ff';
+                 ctx.globalAlpha = 0.3;
+                 ctx.fillRect(x+5, y+5, TILE_SIZE-10, TILE_SIZE-10);
+                 ctx.globalAlpha = 1.0;
+            }
         }
     }
 
-    timerEl.innerText = ((Date.now() - startTime) / 1000).toFixed(2);
-}
-
-function checkCollision(x, y) {
-    let tile = map[y][x];
-    if (tile === 'S' || tile === 'L') {
-        alert("YOU PERISHED IN THE PATHS OF PAIN!");
-        resetPlayer();
-    } else if (tile === 'G') {
-        gameOver = true;
-        alert(`ESCAPED! Final Time: ${timerEl.innerText}s`);
-        location.reload();
-    }
-}
-
-function resetPlayer() {
-    player.x = 1;
-    player.y = 1;
-    player.moving = false;
-    startTime = Date.now();
-}
-
-function drawPlayer() {
-    ctx.fillStyle = "#00ffff";
+    // Draw Player
+    ctx.fillStyle = '#fff';
     ctx.shadowBlur = 10;
-    ctx.shadowColor = "#00ffff";
-    ctx.fillRect(player.x * TILE_SIZE + 5, player.y * TILE_SIZE + 5, TILE_SIZE - 10, TILE_SIZE - 10);
+    ctx.shadowColor = '#fff';
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.size/2, 0, Math.PI * 2);
+    ctx.fill();
     ctx.shadowBlur = 0;
+
+    ctx.restore();
+
+    // Loop
+    requestAnimationFrame(function() {
+        update();
+        draw();
+    });
 }
 
-function loop() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    drawMap();
-    update();
-    drawPlayer();
-    requestAnimationFrame(loop);
-}
 
-window.addEventListener("keydown", (e) => {
-    if (player.moving) return;
-
-    if (e.key === "ArrowUp") { player.vy = -1; player.moving = true; }
-    if (e.key === "ArrowDown") { player.vy = 1; player.moving = true; }
-    if (e.key === "ArrowLeft") { player.vx = -1; player.moving = true; }
-    if (e.key === "ArrowRight") { player.vx = 1; player.moving = true; }
+// Init Game
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 });
+loadLevel();
+draw();
 
-loop();
 </script>
 </body>
 </html>

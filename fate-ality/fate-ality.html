@@ -3,792 +3,324 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FATE-ALITY</title>
+    <title>FATE-ALITY: THE ABYSS</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; }
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            font-family: 'Courier New', Courier, monospace; 
+            background: #000;
+        }
         #ui {
             position: absolute;
             top: 20px;
             left: 20px;
             color: white;
-            background: rgba(0,0,0,0.5);
-            padding: 10px;
-            border-radius: 5px;
-            pointer-events: none;
-        }
-        #blocker {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            color: white;
-        }
-        #instructions {
-            text-align: center;
-            cursor: pointer;
+            z-index: 10;
         }
         #back-btn {
             position: absolute;
             top: 20px;
             right: 20px;
-            color: white;
-            background: rgba(0,0,0,0.5);
+            color: #ff00ff;
+            background: rgba(0,0,0,0.8);
             padding: 10px 20px;
-            border-radius: 5px;
+            border: 2px solid #ff00ff;
             text-decoration: none;
             font-weight: bold;
             z-index: 1000;
-            pointer-events: auto;
         }
-        #back-btn:hover {
-            background: rgba(255, 0, 85, 0.8);
+        canvas {
+            display: block;
+        }
+        #blocker {
+            position: absolute;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            color: white;
+            z-index: 100;
+        }
+        #instructions { text-align: center; cursor: pointer; }
+        .star-emitter {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            box-shadow: inset 0 0 100px rgba(255, 255, 0, 0);
+            transition: box-shadow 0.5s;
+        }
+        .warning {
+            box-shadow: inset 0 0 100px rgba(255, 255, 0, 0.5);
         }
     </style>
 </head>
 <body>
-    <a href="../hub/index.html" id="back-btn">Back to Hub</a>
-
-    <div id="ui">
-        <div>Health: <span id="health">100</span>%</div>
-        <div>Score: <span id="score">0</span></div>
-    </div>
-    
     <div id="blocker">
         <div id="instructions">
-            <span style="font-size:36px">Click to Play</span>
-            <br /><br />
-            Move: W, A, S, D<br/>
-            Crouch: C | Run: Shift<br/>
-            Jump: Space<br/>
-            Look: Mouse<br/>
-            Run Away from the Red Enemies!
+            <h1 style="color:#ff00ff">FATE-ALITY</h1>
+            <p>Objective: Reach the saferooms between brick hallways.</p>
+            <p>Controls: WASD to Move. Hold C over a safe spot to hide.</p>
+            <p style="color:yellow">Watch the screen edges for stars - THE STAR is coming.</p>
+            <h2 style="margin-top:20px">CLICK TO START</h2>
         </div>
     </div>
 
-    <!-- Import maps polyfill -->
-    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
-
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-            }
-        }
-    </script>
-
-    <script type="module">
-        import * as THREE from 'three';
-        import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
-
-        let camera, scene, renderer, controls;
-        let moveForward = false;
-        let moveBackward = false;
-        let moveLeft = false;
-        let moveRight = false;
-        let canJump = false;
-        
-        // Advanced Movement States
-        let isRunning = false;
-        let isCrouching = false;
-        let isSliding = false;
-        let slideVector = new THREE.Vector3();
-        let jumpCount = 0;
-        let isDrillDashing = false;
-        
-        let prevTime = performance.now();
-        const velocity = new THREE.Vector3();
-        const direction = new THREE.Vector3();
-
-        // Game State
-        let enemies = [];
-        let score = 0;
-        let health = 100;
-        let lastEnemySpawn = 0;
-        let isGameOver = false;
-
-        // Enemy System
-        const ENEMY_TYPES = {
-            RUSHER: 0, // Fast, charges straight
-            STALKER: 1, // Slow, moves when you don't look? Or maybe teleports? Let's keep it simple for now. 
-                        // Prompt said: "safe spot a few doors ahead that will keep you safe when this enemy passes"
-                        // Implies a big wave or sweeping enemy.
-            SWEEPER: 1 // Moves fast down the hall, must be in safe closet to survive
-        };
-        let currentEvent = null; // { type, startChunk, endChunk, active, object }
-
-        // Map Gen
-        const CHUNK_SIZE = 100;
-        const HALL_WIDTH = 40;
-        const HALL_HEIGHT = 20;
-        const RENDER_DISTANCE = 6;
-        let activeChunks = [];
-        let mapGroup = new THREE.Group();
-
-        const scoreEl = document.getElementById('score');
-        const healthEl = document.getElementById('health');
-        const instructions = document.getElementById('instructions');
-        const blocker = document.getElementById('blocker');
-
-        init();
-        animate();
-
-        function init() {
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 1000);
-            camera.position.y = 10;
-
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB); // Sky blue
-            scene.fog = new THREE.Fog(0x87CEEB, 0, 750);
-
-            // Lighting
-            const light = new THREE.HemisphereLight(0xeeeeff, 0x777788, 2.5);
-            light.position.set(0.5, 1, 0.75);
-            scene.add(light);
-
-            // Controls
-            controls = new PointerLockControls(camera, document.body);
-
-            instructions.addEventListener('click', function () {
-                if(!isGameOver) controls.lock();
-                else resetGame();
-            });
-
-            controls.addEventListener('lock', function () {
-                instructions.style.display = 'none';
-                blocker.style.display = 'none';
-            });
-
-            controls.addEventListener('unlock', function () {
-                blocker.style.display = 'flex';
-                if(!isGameOver) {
-                    instructions.style.display = '';
-                    instructions.innerHTML = '<span style="font-size:36px">Click to Resume</span>';
-                }
-            });
-
-            scene.add(controls.getObject());
-
-            // Add Map Group
-            scene.add(mapGroup);
-            
-            // Initial Map Generation
-            updateMap(0);
-
-            // Key mappings
-            const onKeyDown = function (event) {
-                switch (event.code) {
-                    case 'ArrowUp':
-                    case 'KeyW':
-                        moveForward = true;
-                        break;
-                    case 'ArrowLeft':
-                    case 'KeyA':
-                        moveLeft = true;
-                        break;
-                    case 'ArrowDown':
-                    case 'KeyS':
-                        moveBackward = true;
-                        break;
-                    case 'ArrowRight':
-                    case 'KeyD':
-                        moveRight = true;
-                        break;
-                    case 'ShiftLeft':
-                    case 'ShiftRight':
-                        isRunning = true;
-                        // Start slide if running and crouch is pressed simultaneously or vice versa
-                        if (isCrouching && !isSliding) startSlide(); 
-                        break;
-                    case 'KeyC':
-                        isCrouching = true;
-                        if (isRunning && !isSliding) startSlide();
-                        else if (!isSliding) startCrouch();
-                        break;
-                    case 'ControlLeft':
-                        controls.unlock();
-                        break;
-                    case 'Space':
-                        if (canJump === true) {
-                            velocity.y += 350;
-                            canJump = false;
-                            jumpCount = 1;
-                        } else if (jumpCount === 1 && isRunning) {
-                             // Drill Dash: Run + Jump + Jump
-                             startDrillDash();
-                        }
-                        break;
-                }
-            };
-
-            const onKeyUp = function (event) {
-                switch (event.code) {
-                    case 'ArrowUp':
-                    case 'KeyW':
-                        moveForward = false;
-                        break;
-                    case 'ArrowLeft':
-                    case 'KeyA':
-                        moveLeft = false;
-                        break;
-                    case 'ArrowDown':
-                    case 'KeyS':
-                        moveBackward = false;
-                        break;
-                    case 'ArrowRight':
-                    case 'KeyD':
-                        moveRight = false;
-                        break;
-                    case 'ShiftLeft':
-                    case 'ShiftRight':
-                        isRunning = false;
-                        break;
-                    case 'KeyC':
-                        isCrouching = false;
-                        if (!isSliding) stopCrouch();
-                        break;
-                }
-            };
-
-            document.addEventListener('keydown', onKeyDown);
-            document.addEventListener('keyup', onKeyUp);
-
-            /* Removed old floor
-            // Floor
-            const floorGeometry = new THREE.PlaneGeometry(2000, 2000, 100, 100);
-            floorGeometry.rotateX(-Math.PI / 2);
-            
-            // Grid texture helper
-            const gridHelper = new THREE.GridHelper(2000, 50);
-            scene.add(gridHelper);
-
-            const floorMaterial = new THREE.MeshBasicMaterial({ color: 0x228b22 }); // Green
-            const floor = new THREE.Mesh(floorGeometry, floorMaterial);
-            scene.add(floor);
-            */
-
-             // Add lighting to player position
-            const playerLight = new THREE.PointLight(0xffffff, 1, 100);
-            camera.add(playerLight);
-            scene.add(camera);
-
-            // Objects
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            document.body.appendChild(renderer.domElement);
-
-            window.addEventListener('resize', onWindowResize);
-        }
-
-        function onWindowResize() {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        function createChunk(index) {
-            const chunk = new THREE.Group();
-            chunk.position.z = -(index * CHUNK_SIZE) - (CHUNK_SIZE / 2);
-            
-            const isSafe = (index > 0 && index % 100 === 0);
-
-            // Floor
-            const floorGeo = new THREE.PlaneGeometry(HALL_WIDTH, CHUNK_SIZE);
-            floorGeo.rotateX(-Math.PI / 2);
-            const floorMat = new THREE.MeshStandardMaterial({ 
-                color: isSafe ? 0x00ff00 : 0x222222,
-                roughness: 0.8
-            });
-            const floor = new THREE.Mesh(floorGeo, floorMat);
-            chunk.add(floor);
-
-            // Ceiling
-            const ceilGeo = new THREE.PlaneGeometry(HALL_WIDTH, CHUNK_SIZE);
-            ceilGeo.rotateX(Math.PI / 2);
-            ceilGeo.translate(0, HALL_HEIGHT, 0); // Move up
-            const ceilMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
-            const ceiling = new THREE.Mesh(ceilGeo, ceilMat);
-            chunk.add(ceiling);
-
-            // Walls
-            const wallGeo = new THREE.PlaneGeometry(CHUNK_SIZE, HALL_HEIGHT);
-            wallGeo.rotateY(Math.PI / 2);
-            
-            const wallMat = new THREE.MeshStandardMaterial({ 
-                color: isSafe ? 0xccffcc : 0x444444,
-                side: THREE.DoubleSide
-            });
-
-            const wallL = new THREE.Mesh(wallGeo, wallMat);
-            wallL.position.set(-HALL_WIDTH/2, HALL_HEIGHT/2, 0);
-            chunk.add(wallL);
-
-            const wallR = new THREE.Mesh(wallGeo, wallMat);
-            wallR.position.set(HALL_WIDTH/2, HALL_HEIGHT/2, 0);
-            chunk.add(wallR);
-
-            // Door / Archway at the end of the chunk (towards negative Z)
-            // Positioned at z = -CHUNK_SIZE/2 relative to chunk center
-            const doorGroup = new THREE.Group();
-            doorGroup.position.z = -CHUNK_SIZE / 2;
-            
-            const doorFrameWidth = 4;
-            const doorFrameHeight = 12;
-            
-            const frameMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-            
-            // Left part of wall
-            const leftWallW = (HALL_WIDTH - doorFrameWidth * 2) / 2; // Actually just make a wall with a hole
-            // Let's simpler: Left Panel, Right Panel, Top Panel
-            
-            const panelW = (HALL_WIDTH - 10) / 2; // 10 unit opening
-            const panelH = HALL_HEIGHT;
-            
-            const pGeo = new THREE.BoxGeometry(panelW, panelH, 1);
-            
-            const pLeft = new THREE.Mesh(pGeo, frameMat);
-            pLeft.position.set(-(HALL_WIDTH/2) + (panelW/2), panelH/2, 0);
-            doorGroup.add(pLeft);
-            
-            const pRight = new THREE.Mesh(pGeo, frameMat);
-            pRight.position.set((HALL_WIDTH/2) - (panelW/2), panelH/2, 0);
-            doorGroup.add(pRight);
-            
-            const topPanelH = HALL_HEIGHT - 12; // Door height 12
-            if(topPanelH > 0) {
-                const tGeo = new THREE.BoxGeometry(10, topPanelH, 1);
-                const pTop = new THREE.Mesh(tGeo, frameMat);
-                pTop.position.set(0, 12 + topPanelH/2, 0);
-                doorGroup.add(pTop);
-            }
-            
-            chunk.add(doorGroup);
-
-            // Signs for Safe Area
-            if(isSafe) {
-                // ... could add text or specific prop
-            }
-
-            // Safe Closets / Hiding Spots
-            // Every chunk that isn't safe zone has a chance for a side closet
-            if (!isSafe && Math.random() < 0.3) {
-                 const closetW = 8;
-                 const closetD = 8;
-                 
-                 // Left or Right wall
-                 const isLeft = Math.random() < 0.5;
-                 
-                 const cGeo = new THREE.BoxGeometry(closetW, 10, closetD);
-                 const cMat = new THREE.MeshStandardMaterial({ color: 0x555555, side: THREE.DoubleSide });
-                 
-                 // We need to cut a hole in the wall... but since we use simple planes, let's just add a "room" sticking out
-                 // and assume we can phaseshift or just visually indicate it.
-                 // Better: Retract the wall segment.
-                 // Actually, let's just make the closet a safe volume marked by different floor.
-                 // For now, let's make a visible "Safe Alcove" using objects.
-                 
-                 const alcoveGroup = new THREE.Group();
-                 alcoveGroup.position.x = isLeft ? -HALL_WIDTH/2 : HALL_WIDTH/2;
-                 alcoveGroup.position.y = 5;
-                 
-                 // Visualize safe spot
-                 const markerGeo = new THREE.CylinderGeometry(4, 4, 1, 16);
-                 const markerMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.3 });
-                 const marker = new THREE.Mesh(markerGeo, markerMat);
-                 marker.position.y = -4.5; // on floor
-                 marker.position.x = isLeft ? 5 : -5; // slightly inside hall
-                 
-                 alcoveGroup.add(marker);
-                 chunk.add(alcoveGroup);
-                 
-                 // Metadata for safety
-                 chunk.userData.hasSafeSpot = true;
-                 chunk.userData.safeSpotSide = isLeft ? -1 : 1; 
-                 // Safe spot radius around marker world pos
-                 chunk.userData.safeSpotLocalPos = new THREE.Vector3(
-                     alcoveGroup.position.x + marker.position.x, 
-                     0, 
-                     marker.position.z // relative to chunk center which is 0
-                 );
-            }
-
-            chunk.userData = { index: index, isSafe: isSafe };
-            return chunk;
-        }
-
-        function updateMap(playerZ) {
-            // Player is moving into negative Z
-            const currentIndex = Math.floor(Math.abs(playerZ) / CHUNK_SIZE);
-            
-            // Remove old chunks
-            for (let i = activeChunks.length - 1; i >= 0; i--) {
-                const chunk = activeChunks[i];
-                if (chunk.userData.index < currentIndex - 2) {
-                    mapGroup.remove(chunk);
-                    activeChunks.splice(i, 1);
-                }
-            }
-            
-            // Add new chunks
-            // We want to see RENDER_DISTANCE chunks ahead
-            // maxIndex we currently have
-            let maxIndex = -1;
-            if(activeChunks.length > 0) {
-                maxIndex = Math.max(...activeChunks.map(c => c.userData.index));
-            } else {
-                maxIndex = Math.max(-1, currentIndex - 1);
-            }
-
-            const targetIndex = currentIndex + 10; // Increased render distance
-            
-            for (let i = maxIndex + 1; i <= targetIndex; i++) {
-                const chunk = createChunk(i);
-                mapGroup.add(chunk);
-                activeChunks.push(chunk);
-            }
-            
-            // Return current index for game logic
-            return currentIndex;
-        }
-
-        function spawnEnemy() {
-             // Logic moved to manageGameFlow
-        }
-        
-        function spawnRusher() {
-            const geometry = new THREE.ConeGeometry(2, 6, 8);
-            geometry.rotateX(Math.PI / 2); // Point forward
-            const material = new THREE.MeshStandardMaterial({ color: 0xff4400 });
-            const enemy = new THREE.Mesh(geometry, material);
-
-            const pPos = controls.getObject().position;
-            
-            // Spawn ahead
-            const spawnZ = pPos.z - (60 + Math.random() * 20); 
-            // Clamp X
-            const spawnX = (Math.random() - 0.5) * (HALL_WIDTH - 10);
-
-            enemy.position.set(spawnX, 3, spawnZ);
-            
-            enemy.userData = { type: ENEMY_TYPES.RUSHER };
-
-            scene.add(enemy);
-            enemies.push(enemy);
-        }
-        
-        function spawnSweeper(playerZ) {
-            // Sweeper is a massive wall that moves down the hall
-            const geometry = new THREE.BoxGeometry(HALL_WIDTH - 2, 18, 5);
-            const material = new THREE.MeshStandardMaterial({ color: 0x330033, transparent: true, opacity: 0.9 });
-            const enemy = new THREE.Mesh(geometry, material);
-            
-            // Spawn far ahead
-            const spawnZ = playerZ - 250; 
-            
-            enemy.position.set(0, 9, spawnZ);
-            enemy.userData = { type: ENEMY_TYPES.SWEEPER };
-            
-            scene.add(enemy);
-            enemies.push(enemy);
-            
-            // Notify player
-             const notif = document.createElement('div');
-             notif.style.position = 'absolute';
-             notif.style.top = '20%';
-             notif.style.width = '100%';
-             notif.style.textAlign = 'center';
-             notif.style.color = 'cyan';
-             notif.style.fontSize = '24px';
-             notif.style.fontWeight = 'bold';
-             notif.innerText = "WARNING: SWEEPER APPROACHING! FIND A SAFE SPOT!";
-             document.body.appendChild(notif);
-             
-             setTimeout(() => notif.remove(), 4000);
-        }
-
-        function updateEnemies(delta) {
-            const pPos = controls.getObject().position;
-            
-            // Check if player is in a safe spot
-            let isPlayerSafe = false;
-            // Find current chunk
-            const currentChunkIdx = Math.floor(Math.abs(pPos.z) / CHUNK_SIZE);
-            const chunk = activeChunks.find(c => c.userData.index === currentChunkIdx);
-            
-            if (chunk && chunk.userData.hasSafeSpot) {
-                 const safeLocal = chunk.userData.safeSpotLocalPos; 
-                 // transform to world
-                 const safeWorldZ = chunk.position.z + safeLocal.z; // safeLocal.z is 0
-                 const safeWorldX = safeLocal.x;
-                 
-                 const dx = pPos.x - safeWorldX;
-                 const dz = pPos.z - safeWorldZ;
-                 if (Math.sqrt(dx*dx + dz*dz) < 6) { // radius
-                     isPlayerSafe = true;
-                     healthEl.style.color = 'cyan';
-                 } else {
-                     healthEl.style.color = 'white';
-                 }
-            } else {
-                healthEl.style.color = 'white';
-            }
-            if(chunk && chunk.userData.isSafe) isPlayerSafe = true;
-
-            for (let i = enemies.length - 1; i >= 0; i--) {
-                const enemy = enemies[i];
-                
-                if (enemy.userData.type === ENEMY_TYPES.SWEEPER) {
-                     // Sweeper moves towards positive Z (towards start)
-                     // If it passes player and player is NOT safe, instant kill.
-                     // It actually spawns ahead (neg Z) and moves to pos Z.
-                     
-                     const speed = 60.0; // Slower but inevitable
-                     enemy.position.z += speed * delta;
-                     
-                     // Check collision with player Z plane
-                     if (Math.abs(enemy.position.z - pPos.z) < 5) {
-                         if (!isPlayerSafe) {
-                             health = 0;
-                             healthEl.textContent = 0;
-                             gameOver();
-                         }
-                     }
-                     
-                     if (enemy.position.z > pPos.z + 100) {
-                         scene.remove(enemy);
-                         enemies.splice(i, 1);
-                         continue;
-                     }
-                     
-                } else if (enemy.userData.type === ENEMY_TYPES.RUSHER) {
-                    const speed = 400.0; // Very fast
-                    const directionVector = new THREE.Vector3().subVectors(pPos, enemy.position);
-                    directionVector.y = 0;
-                    
-                    const dist = directionVector.length();
-                    directionVector.normalize();
+    <a href="../hub/index.html" id="back-btn">Back to Hub</a>
     
-                    enemy.position.addScaledVector(directionVector, speed * delta);
-                    enemy.lookAt(pPos);
-    
-                    if (dist < 4) {
-                        health -= 20; // Big hit
-                        healthEl.textContent = Math.floor(health);
-                        scene.remove(enemy);
-                        enemies.splice(i, 1);
-                        
-                        if (health <= 0) gameOver();
-                        continue;
-                    }
-                    
-                    if (enemy.position.z > pPos.z + 20) {
-                        // Missed player
-                        scene.remove(enemy);
-                        enemies.splice(i, 1);
-                        continue;
-                    }
+    <div id="ui">
+        <div>ROOMS CLEARED: <span id="roomCount">0</span></div>
+        <div id="status" style="margin-top:10px; color: #00ff00;">READY</div>
+    </div>
+
+    <div id="star-overlay" class="star-emitter"></div>
+    <canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const roomCountEl = document.getElementById("roomCount");
+const statusEl = document.getElementById("status");
+const starOverlay = document.getElementById("star-overlay");
+const blocker = document.getElementById("blocker");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Game State
+let isPlaying = false;
+let roomsCleared = 0;
+let player = { x: 100, y: 0, radius: 15, speed: 5, isHidden: false };
+let camera = { x: 0 };
+let map = []; // Array of hallways and rooms
+let starEnemy = { active: false, x: 0, timer: 0, speed: 20, warningSign: false };
+
+const HALL_HEIGHT = 200;
+const ROOM_WIDTH = 800;
+const SAFE_SPOT_WIDTH = 60;
+
+function init() {
+    player.y = canvas.height / 2;
+    map = [];
+    roomsCleared = 0;
+    camera.x = 0;
+    generateMapChunk(0);
+}
+
+function generateMapChunk(startX) {
+    let x = startX;
+    for (let i = 0; i < 5; i++) {
+        // Hallway
+        map.push({
+            type: 'hall',
+            x: x,
+            width: ROOM_WIDTH,
+            safeSpot: Math.random() < 0.7 ? { x: x + 200 + Math.random() * (ROOM_WIDTH - 400) } : null
+        });
+        x += ROOM_WIDTH;
+        // Door/Saferoom Transition
+        map.push({
+            type: 'door',
+            x: x,
+            width: 100
+        });
+        x += 100;
+    }
+}
+
+// Input
+const keys = {};
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+
+blocker.addEventListener('click', () => {
+    blocker.style.display = 'none';
+    isPlaying = true;
+    init();
+});
+
+function update() {
+    if (!isPlaying) return;
+
+    // Movement
+    if (keys['KeyW'] || keys['ArrowUp']) player.y -= player.speed;
+    if (keys['KeyS'] || keys['ArrowDown']) player.y += player.speed;
+    if (keys['KeyA'] || keys['ArrowLeft']) player.x -= player.speed;
+    if (keys['KeyD'] || keys['ArrowRight']) player.x += player.speed;
+
+    // Boundary & Hallway constraints
+    player.y = Math.max(canvas.height/2 - 50, Math.min(player.y, canvas.height/2 + 50));
+    player.x = Math.max(0, player.x);
+
+    // Hiding Logic
+    player.isHidden = false;
+    if (keys['KeyC']) {
+        // Check if over a safe spot
+        map.forEach(segment => {
+            if (segment.type === 'hall' && segment.safeSpot) {
+                const ssX = segment.safeSpot.x;
+                if (player.x > ssX && player.x < ssX + SAFE_SPOT_WIDTH) {
+                    player.isHidden = true;
                 }
             }
+        });
+    }
+
+    // Camera follow
+    camera.x = player.x - 200;
+
+    // Room Clearing Check
+    const currentRoom = Math.floor(player.x / (ROOM_WIDTH + 100));
+    if (currentRoom > roomsCleared) {
+        roomsCleared = currentRoom;
+        roomCountEl.innerText = roomsCleared;
+        if (map.length - (roomsCleared * 2) < 5) generateMapChunk(map[map.length-1].x + map[map.length-1].width);
+    }
+
+    // Star Enemy Logic
+    if (!starEnemy.active) {
+        starEnemy.timer++;
+        if (starEnemy.timer > 300) { // Warning phase
+            starEnemy.warningSign = true;
+            starOverlay.classList.add('warning');
+            statusEl.innerText = "!!! RUN !!!";
+            statusEl.style.color = "yellow";
+        }
+        if (starEnemy.timer > 500) { // Spawn
+            starEnemy.active = true;
+            starEnemy.x = camera.x - 500;
+            starEnemy.warningSign = false;
+        }
+    } else {
+        starEnemy.x += starEnemy.speed;
+        if (starEnemy.x > player.x + canvas.width) {
+            starEnemy.active = false;
+            starEnemy.timer = 0;
+            starOverlay.classList.remove('warning');
+            statusEl.innerText = "SAFE";
+            statusEl.style.color = "#00ff00";
         }
 
-        function gameOver() {
-            isGameOver = true;
-            controls.unlock();
-            instructions.innerHTML = '<span style="font-size:36px; color: red;">GAME OVER</span><br/><br/>Score: ' + Math.floor(score) + '<br/>Click to Restart';
-            instructions.style.display = '';
-            blocker.style.display = 'flex';
-        }
-
-        function resetGame() {
-            isGameOver = false;
-            health = 100;
-            score = 0;
-            healthEl.textContent = health;
-            scoreEl.textContent = score;
-
-            // Remove all enemies
-            enemies.forEach(e => scene.remove(e));
-            enemies = [];
-            
-            // Reset position
-            velocity.set(0, 0, 0);
-            controls.getObject().position.set(0, 5, 0); // Start lower
-            
-            // Reset Map
-            while(activeChunks.length > 0){
-                mapGroup.remove(activeChunks.pop());
+        // Collision Check
+        if (Math.abs(starEnemy.x - player.x) < 50) {
+            if (!player.isHidden) {
+                die();
             }
-            updateMap(0);
-
-            controls.lock();
         }
+    }
+}
 
-        function startCrouch() {
-            camera.position.y = 5; // Lower camera
-        }
+function die() {
+    isPlaying = false;
+    blocker.style.display = 'flex';
+    document.querySelector('#instructions h1').innerText = "FATE-AL ERROR";
+    document.querySelector('#instructions p').innerText = "The Star claimed your soul.";
+}
 
-        function stopCrouch() {
-            camera.position.y = 10; // Reset camera
-        }
+function draw() {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        function startSlide() {
-            isSliding = true;
-            camera.position.y = 3; // Even lower for sliding
+    ctx.save();
+    ctx.translate(-camera.x, 0);
+
+    // Draw Map
+    map.forEach(segment => {
+        if (segment.x + segment.width < camera.x || segment.x > camera.x + canvas.width) return;
+
+        if (segment.type === 'hall') {
+            // Hallway floor/walls (brick style)
+            ctx.fillStyle = "#331a00"; // Dark wood/brick
+            ctx.fillRect(segment.x, canvas.height/2 - 70, segment.width, 140);
             
-            // Calculate slide direction based on current movement or forward view
-            const controlObject = controls.getObject();
-            controlObject.getWorldDirection(slideVector);
-            slideVector.y = 0;
-            slideVector.normalize();
-            
-            // Apply initial high velocity for slide
-            velocity.x = slideVector.x * 800;
-            velocity.z = slideVector.z * 800;
-            
-            // Automatically stop sliding after some time or when slow
-            setTimeout(() => {
-                isSliding = false;
-                if(isCrouching) startCrouch(); else stopCrouch();
-            }, 1000); 
-        }
-        
-        function startDrillDash() {
-             isDrillDashing = true;
-             jumpCount++;
-             
-
-             // Dash downwards forward
-             const controlObject = controls.getObject();
-             controlObject.getWorldDirection(slideVector);
-             slideVector.normalize();
-             
-
-             // strong forward + down impulse
-             velocity.x = slideVector.x * 1200;
-             velocity.z = slideVector.z * 1200;
-             velocity.y = -1000; // slam down
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-
-            const time = performance.now();
-
-            if (controls.isLocked === true) {
-                const delta = (time - prevTime) / 1000;
-
-                velocity.x -= velocity.x * 10.0 * delta;
-                velocity.z -= velocity.z * 10.0 * delta;
-                velocity.y -= 9.8 * 100.0 * delta; // 100.0 = mass
-
-                direction.z = Number(moveForward) - Number(moveBackward);
-                direction.x = Number(moveRight) - Number(moveLeft);
-                direction.normalize(); 
-
-                if (isSliding) {
-                     // Friction handling for slide: lose momentum over time
-                     velocity.x *= 0.98;
-                     velocity.z *= 0.98;
-                } else if (!isDrillDashing) {
-                     // Normal Movement
-                     let speed = 700.0;
-                     if (isRunning) speed = 1400.0;
-                     if (isCrouching) speed = 350.0;
-
-                     if (moveForward || moveBackward) velocity.z -= direction.z * speed * delta;
-                     if (moveLeft || moveRight) velocity.x -= direction.x * speed * delta;
-                }
-
-                controls.moveRight(-velocity.x * delta);
-                controls.moveForward(-velocity.z * delta);
-                
-                controls.getObject().position.y += (velocity.y * delta); 
-
-                if (controls.getObject().position.y < 10) {
-                    
-                    // Landed logic
-                    if (isDrillDashing) {
-                         // Impact from drill dash -> transition to slide
-                         isDrillDashing = false;
-                         startSlide();
-                    }
-
-                    velocity.y = 0;
-                    if (isSliding) {
-                        controls.getObject().position.y = 3;
-                    } else if (isCrouching) {
-                        controls.getObject().position.y = 5;
-                    } else {
-                        controls.getObject().position.y = 10;
-                    }
-                    canJump = true;
-                    jumpCount = 0;
-                }
-
-                // Map Maintenance & Collision
-                const pPos = controls.getObject().position;
-                
-                // Map Update
-                const currentChunkIdx = updateMap(pPos.z);
-                
-                // Wall Collision
-                const halfWidth = HALL_WIDTH / 2;
-                if(pPos.x < -halfWidth + 2) {
-                    pPos.x = -halfWidth + 2;
-                    velocity.x = 0;
-                }
-                if(pPos.x > halfWidth - 2) {
-                    pPos.x = halfWidth - 2;
-                    velocity.x = 0;
-                }
-                
-                // Safe Zone Logic
-                const isSafe = (currentChunkIdx > 0 && currentChunkIdx % 100 === 0);
-                if(isSafe) {
-                    health = Math.min(100, health + (delta * 10)); // Regen
-                    healthEl.textContent = Math.floor(health);
-                    // maybe clear enemies?
-                }
-                
-                // Simple scoring
-                score = Math.floor(Math.abs(pPos.z) / 10); // Score based on distance
-                scoreEl.textContent = "Score: " + score + (isSafe ? " (SAFE)" : "");
-                
-                // Game Director
-                if (!isSafe && !isGameOver) {
-                    // Randomly decide events based on time or distance
-                    // Simple logic:
-                    if (time - lastEnemySpawn > 2000) {
-                         const roll = Math.random();
-                         if (roll < 0.1) {
-                             // Spawn Sweeper event occasionally
-                             // Only spawn if not already present
-                             if (!enemies.some(e => e.userData.type === ENEMY_TYPES.SWEEPER)) {
-                                 spawnSweeper(pPos.z);
-                                 lastEnemySpawn = time + 5000; // Delay next spawn
-                             }
-                         } else {
-                             // Regular fast rusher
-                             spawnRusher();
-                             lastEnemySpawn = time;
-                         }
-                    }
-                }
-
-                updateEnemies(delta);
-
-                // controls.getObject().position.y = 10; // Removed hardcoded height
+            ctx.strokeStyle = "#553311";
+            ctx.lineWidth = 2;
+            for(let i=0; i<segment.width; i+=40) {
+                ctx.strokeRect(segment.x + i, canvas.height/2 - 70, 40, 140);
             }
 
-            prevTime = time;
-
-            renderer.render(scene, camera);
+            // Safe Spot
+            if (segment.safeSpot) {
+                ctx.fillStyle = "#ffff99"; // Light glowing alcove
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = "#ffff00";
+                ctx.fillRect(segment.safeSpot.x, canvas.height/2 - 65, SAFE_SPOT_WIDTH, 130);
+                ctx.shadowBlur = 0;
+            }
+        } else {
+            // Door / Saferoom
+            ctx.fillStyle = "#004400";
+            ctx.fillRect(segment.x, canvas.height/2 - 80, segment.width, 160);
+            ctx.fillStyle = "#996633"; // Door
+            ctx.fillRect(segment.x + 30, canvas.height/2 - 50, 40, 100);
         }
-    </script>
+    });
+
+    // Draw Star Enemy
+    if (starEnemy.active) {
+        drawStar(starEnemy.x, canvas.height/2, 40, 5, 20);
+    }
+
+    // Draw Player
+    ctx.fillStyle = player.isHidden ? "#555" : "#fff";
+    ctx.shadowBlur = player.isHidden ? 0 : 10;
+    ctx.shadowColor = "#fff";
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+
+    // Star Warnings (CSS handles most, but let's draw some particles)
+    if (starEnemy.warningSign) {
+        for(let i=0; i<5; i++) {
+            drawStar(Math.random() * canvas.width, Math.random() * canvas.height, 5, 5, 2, "rgba(255,255,0,0.5)");
+        }
+    }
+
+    requestAnimationFrame(() => {
+        update();
+        draw();
+    });
+}
+
+function drawStar(cx, cy, spikes, outerRadius, innerRadius, color = "yellow") {
+    let rot = Math.PI / 2 * 3;
+    let x = cx;
+    let y = cy;
+    let step = Math.PI / spikes;
+
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outerRadius);
+    for (let i = 0; i < spikes; i++) {
+        x = cx + Math.cos(rot) * outerRadius;
+        y = cy + Math.sin(rot) * outerRadius;
+        ctx.lineTo(x, y);
+        rot += step;
+
+        x = cx + Math.cos(rot) * innerRadius;
+        y = cy + Math.sin(rot) * innerRadius;
+        ctx.lineTo(x, y);
+        rot += step;
+    }
+    ctx.lineTo(cx, cy - outerRadius);
+    ctx.closePath();
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.fill();
+}
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+draw();
+</script>
 </body>
 </html>
