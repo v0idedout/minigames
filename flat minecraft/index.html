@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Sandbox Craft</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #87CEEB; /* Sky Blue */
+            font-family: 'Segoe UI', sans-serif;
+        }
+        canvas {
+            display: block;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            pointer-events: none;
+            line-height: 1.5;
+        }
+        b { color: #FFD700; }
+    </style>
+</head>
+<body>
+
+<div id="ui">
+    <b>A / D</b>: Move Left/Right<br>
+    <b>Space</b>: Jump<br>
+    <b>Left Click</b>: Break | <b>Right Click</b>: Place
+</div>
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// --- Configuration ---
+const TILE_SIZE = 32;
+const WORLD_WIDTH = 100; 
+const WORLD_HEIGHT = 30;
+const GRAVITY = 0.6;
+const JUMP_FORCE = -12;
+const SPEED = 5;
+
+const COLORS = {
+    0: 'transparent',
+    1: '#228B22', // Grass
+    2: '#8B4513', // Dirt
+    3: '#808080'  // Stone
+};
+
+// --- Game State ---
+const world = [];
+const keys = {};
+const player = {
+    x: 400,
+    y: 100,
+    w: 24,
+    h: 44,
+    vx: 0,
+    vy: 0,
+    grounded: false
+};
+
+// --- Initialization ---
+function init() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    // Generate World
+    for (let x = 0; x < WORLD_WIDTH; x++) {
+        world[x] = [];
+        for (let y = 0; y < WORLD_HEIGHT; y++) {
+            let type = 0;
+            if (y > 15) type = 3;      // Stone
+            else if (y > 10) type = 2; // Dirt
+            else if (y === 10) type = 1; // Grass
+            world[x][y] = type;
+        }
+    }
+    requestAnimationFrame(update);
+}
+
+// --- Input Handling ---
+window.addEventListener('keydown', e => keys[e.code] = true);
+window.addEventListener('keyup', e => keys[e.code] = false);
+window.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    
+    // 1. Get click position relative to the canvas element
+    const canvasX = e.clientX - rect.left;
+    const canvasY = e.clientY - rect.top;
+
+    // 2. Convert Canvas space to World space using camera offset
+    // (If the camera moves, we add that movement back to the click)
+    const cameraOffsetX = player.x - canvas.width / 2;
+    const worldX = canvasX + cameraOffsetX;
+    const worldY = canvasY; // Add cameraOffsetY here if your camera moves vertically
+
+    // 3. Convert World pixels to Grid coordinates
+    const tileX = Math.floor(worldX / TILE_SIZE);
+    const tileY = Math.floor(worldY / TILE_SIZE);
+
+    // 4. Bounds check: Ensure the click is actually inside the map
+    const isWithinBounds = tileX >= 0 && tileX < WORLD_WIDTH && 
+                           tileY >= 0 && tileY < WORLD_HEIGHT;
+
+    if (isWithinBounds) {
+        if (e.button === 0) { 
+            // Left Click: Break (set to 0/Air)
+            world[tileX][tileY] = 0; 
+        } else if (e.button === 2) { 
+            // Right Click: Build (set to 1/Block)
+            world[tileX][tileY] = 1; 
+        }
+    }
+});
+
+// Prevent the context menu from popping up on right-click
+canvas.addEventListener('contextmenu', e => e.preventDefault());

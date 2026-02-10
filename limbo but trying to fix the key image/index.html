@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Ensure the player is hidden but functional */
+        #youtube-player {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            visibility: hidden;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="status-msg">CLICK TO START THE CHALLENGE</div>
+
+    <div class="game-area" id="stage">
+        <div class="safe-box" id="safe-msg">you are safe for now.</div>
+    </div>
+
+    <div id="youtube-player"></div>
+
+    <script>
+        const stage = document.getElementById('stage');
+        const status = document.getElementById('status-msg');
+        const safeMsg = document.getElementById('safe-msg');
+        
+        const grid = [
+            {x: 100, y: 75}, {x: 300, y: 75}, {x: 500, y: 75},
+            {x: 100, y: 225}, {x: 300, y: 225}, {x: 500, y: 225}
+        ];
+
+        let keyObjects = [];
+        let winningId = null;
+        let isInputLocked = true;
+        let player;
+        let gameStarted = false;
+
+        // Load YouTube IFrame API
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('youtube-player', {
+                height: '0',
+                width: '0',
+                videoId: 'OmahQ9RFOPo', // Isolation by Nighthawk22
+                events: {
+                    'onReady': () => { console.log("Audio Ready"); }
+                }
+            });
+        }
+
+        // Initialize game structure but wait for click to start audio/movement
+        function init() {
+            stage.innerHTML = '<div class="safe-box" id="safe-msg">you are safe for now.</div>';
+            keyObjects = [];
+            
+            for(let i = 0; i < 6; i++) {
+                const el = document.createElement('div');
+                el.className = 'key-sprite';
+                el.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>`;
+                el.style.left = grid[i].x + 'px';
+                el.style.top = grid[i].y + 'px';
+                
+                const keyObj = { element: el, posIndex: i, id: i };
+                el.onclick = () => handleSelection(keyObj);
+                
+                stage.appendChild(el);
+                keyObjects.push(keyObj);
+            }
+        }
+
+        // Audio logic: pick a 30s window between 1:20 (80s) and 3:15 (195s)
+        function startChallenge() {
+            if(gameStarted || !player) return;
+            gameStarted = true;
+            status.innerText = "CHOOSE THE CORRECT KEY";
+
+            const minTime = 80;  // 1:20
+            const maxTime = 195 - 30; // 3:15 minus 30s clip length
+            const startTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
+
+            player.seekTo(startTime);
+            player.playVideo();
+            player.setVolume(100);
+
+            revealWinner();
+        }
+
+        function revealWinner() {
+            winningId = Math.floor(Math.random() * 6);
+            keyObjects[winningId].element.classList.add('active');
+
+            setTimeout(() => {
+                keyObjects[winningId].element.classList.remove('active');
+                performShuffle(0);
+            }, 1800);
+        }
+
+        function performShuffle(count) {
+            if (count >= 15) {
+                isInputLocked = false;
+                return;
+            }
+            let idxA = Math.floor(Math.random() * 6);
+            let idxB = Math.floor(Math.random() * 6);
+            while(idxA === idxB) idxB = Math.floor(Math.random() * 6);
+
+            let tempPos = keyObjects[idxA].posIndex;
+            keyObjects[idxA].posIndex = keyObjects[idxB].posIndex;
+            keyObjects[idxB].posIndex = tempPos;
+
+            keyObjects.forEach(obj => {
+                obj.element.style.left = grid[obj.posIndex].x + 'px';
+                obj.element.style.top = grid[obj.posIndex].y + 'px';
+            });
+
+            setTimeout(() => performShuffle(count + 1), 350);
+        }
+
+        function fadeAudio() {
+            let volume = player.getVolume();
+            const fadeInterval = setInterval(() => {
+                if (volume > 0) {
+                    volume -= 5;
+                    player.setVolume(volume);
+                } else {
+                    player.pauseVideo();
+                    clearInterval(fadeInterval);
+                }
+            }, 100);
+        }
+
+        function handleSelection(clickedObj) {
+            if(isInputLocked) return;
+
+            fadeAudio();
+
+            if(clickedObj.id === winningId) {
+                document.getElementById('safe-msg').style.display = 'block';
+                status.innerText = "YOU SURVIVED";
+                isInputLocked = true;
+            } else {
+                status.innerText = "ELIMINATED";
+                clickedObj.element.style.opacity = "0.1";
+                isInputLocked = true;
+                setTimeout(() => location.reload(), 2000);
+            }
+        }
+
+        // Start game on first click
+        window.onclick = () => { if(!gameStarted) startChallenge(); };
+
+        init();
+    </script>
+</body>
+</html>
