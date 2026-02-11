@@ -2,22 +2,169 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <link rel="stylesheet" href="style.css">
+    <style>
+        /* INTEGRATED CSS */
+        body {
+            background: linear-gradient(to bottom, #7a1d7a 0%, #3d0e3d 40%, #000000 100%);
+            color: #ffffff;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            user-select: none;
+        }
+
+        body::after {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(rgba(0,0,0,0) 50%, rgba(0,0,0,0.1) 50%);
+            background-size: 100% 4px;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        #status-msg {
+            font-size: 22px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            margin-bottom: 50px;
+            color: #e0a0ff;
+            text-shadow: 0 0 10px rgba(255, 0, 255, 0.7);
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        .game-area {
+            position: relative;
+            width: 600px;
+            height: 300px;
+            z-index: 10;
+        }
+
+        .key-sprite {
+            position: absolute;
+            width: 85px;
+            height: 85px;
+            transform: translate(-50%, -50%);
+            transition: all 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .key-sprite svg {
+            fill: #ff0000;
+            width: 100%;
+            filter: drop-shadow(0 0 8px #ff0000) drop-shadow(0 0 2px #000);
+        }
+
+        .key-sprite.active svg {
+            fill: #00ff00;
+            filter: drop-shadow(0 0 15px #00ff00);
+        }
+
+        /* NEW: Blackout Overlay */
+        #win-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: black;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 1.5s ease;
+            z-index: 200;
+        }
+
+        #win-screen.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .safe-box {
+            border: 1.5px solid #00ff00;
+            padding: 12px 35px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            font-size: 18px;
+            font-weight: 300;
+            white-space: nowrap;
+            transition: transform 1.5s ease-in-out;
+        }
+
+        #retry-btn {
+            margin-top: 40px;
+            padding: 12px 30px;
+            background: transparent;
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 14px;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 2s ease, background 0.3s;
+        }
+
+        #retry-btn:hover {
+            background: rgba(0, 255, 0, 0.1);
+        }
+
+        #youtube-player {
+            position: absolute;
+            top: -9999px;
+            left: -9999px;
+            visibility: hidden;
+        }
+        #back-btn {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #ff00ff;
+            background: rgba(0,0,0,0.8);
+            padding: 10px 20px;
+            border: 2px solid #ff00ff;
+            text-decoration: none;
+            font-weight: bold;
+            z-index: 1000;
+        }
+    </style>
 </head>
 <body>
 
-    <div id="status-msg">CHOOSE THE CORRECT KEY</div>
+    <a href="../hub/index.html" id="back-btn">Back to Hub</a>
+
+    <div id="status-msg">CLICK TO START THE CHALLENGE</div>
 
     <div class="game-area" id="stage">
-        <div class="safe-box" id="safe-msg">you are safe for now.</div>
+        </div>
+
+    <div id="win-screen">
+        <div class="safe-box">you are safe for now.</div>
+        <button id="retry-btn">TRY AGAIN</button>
     </div>
+
+    <div id="youtube-player"></div>
 
     <script>
         const stage = document.getElementById('stage');
         const status = document.getElementById('status-msg');
-        const safeMsg = document.getElementById('safe-msg');
+        const winScreen = document.getElementById('win-screen');
+        const retryBtn = document.getElementById('retry-btn');
         
-        // Grid coordinates (Centers of 3 columns, 2 rows)
         const grid = [
             {x: 100, y: 75}, {x: 300, y: 75}, {x: 500, y: 75},
             {x: 100, y: 225}, {x: 300, y: 225}, {x: 500, y: 225}
@@ -26,34 +173,69 @@
         let keyObjects = [];
         let winningId = null;
         let isInputLocked = true;
+        let player;
+        let gameStarted = false;
+        let selectionTimer = null;
+
+        const tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        function onYouTubeIframeAPIReady() {
+            player = new YT.Player('youtube-player', {
+                height: '0',
+                width: '0',
+                videoId: 'OmahQ9RFOPo',
+                events: { 'onReady': () => console.log("Audio Ready") }
+            });
+        }
 
         function init() {
-            stage.innerHTML = '<div class="safe-box" id="safe-msg">you are safe for now.</div>';
+            stage.innerHTML = '';
             keyObjects = [];
-            
             for(let i = 0; i < 6; i++) {
                 const el = document.createElement('div');
                 el.className = 'key-sprite';
                 el.innerHTML = `<svg viewBox="0 0 24 24"><path d="M12.65 10C11.83 7.67 9.61 6 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6c2.61 0 4.83-1.67 5.65-4H17v4h4v-4h2v-4H12.65zM7 14c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2z"/></svg>`;
-                
-                // Initial placement
                 el.style.left = grid[i].x + 'px';
                 el.style.top = grid[i].y + 'px';
-                
                 const keyObj = { element: el, posIndex: i, id: i };
                 el.onclick = () => handleSelection(keyObj);
-                
-                document.getElementById('stage').appendChild(el);
+                stage.appendChild(el);
                 keyObjects.push(keyObj);
             }
-            
-            setTimeout(revealWinner, 800);
+        }
+
+        function fadeInAudio() {
+            let volume = 0;
+            player.setVolume(0);
+            const fadeInterval = setInterval(() => {
+                if (volume < 100) {
+                    volume += 5;
+                    player.setVolume(volume);
+                } else {
+                    clearInterval(fadeInterval);
+                }
+            }, 100);
+        }
+
+        function startChallenge() {
+            if(gameStarted || !player) return;
+            gameStarted = true;
+            status.innerText = "CHOOSE THE CORRECT KEY";
+            const minTime = 80;
+            const maxTime = 165; 
+            const startTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
+            player.seekTo(startTime);
+            player.playVideo();
+            fadeInAudio();
+            revealWinner();
         }
 
         function revealWinner() {
             winningId = Math.floor(Math.random() * 6);
             keyObjects[winningId].element.classList.add('active');
-
             setTimeout(() => {
                 keyObjects[winningId].element.classList.remove('active');
                 performShuffle(0);
@@ -61,45 +243,118 @@
         }
 
         function performShuffle(count) {
-            if (count >= 15) { // Number of swaps
-                isInputLocked = false;
+            if (count >= 36) { // ~20 seconds (36 * 550ms ≈ 20s)
+                startSelectionTimer();
                 return;
             }
 
-            // Pick two different keys to swap
-            let idxA = Math.floor(Math.random() * 6);
-            let idxB = Math.floor(Math.random() * 6);
-            while(idxA === idxB) idxB = Math.floor(Math.random() * 6);
+            // Decide how many keys to shuffle (between 2 and 4)
+            const numToShuffle = Math.floor(Math.random() * 3) + 2; 
+            
+            // Get unique indices to shuffle
+            let indices = [];
+            while(indices.length < numToShuffle) {
+                let r = Math.floor(Math.random() * 6);
+                if(indices.indexOf(r) === -1) indices.push(r);
+            }
 
-            // Swap their posIndex values
-            let tempPos = keyObjects[idxA].posIndex;
-            keyObjects[idxA].posIndex = keyObjects[idxB].posIndex;
-            keyObjects[idxB].posIndex = tempPos;
+            // Perform a cyclic swap of positions for the selected keys
+            let firstPos = keyObjects[indices[0]].posIndex;
+            for(let i = 0; i < indices.length - 1; i++) {
+                keyObjects[indices[i]].posIndex = keyObjects[indices[i+1]].posIndex;
+            }
+            keyObjects[indices[indices.length - 1]].posIndex = firstPos;
 
-            // Apply new CSS coordinates
             keyObjects.forEach(obj => {
                 obj.element.style.left = grid[obj.posIndex].x + 'px';
                 obj.element.style.top = grid[obj.posIndex].y + 'px';
             });
+            setTimeout(() => performShuffle(count + 1), 370);
+        }
 
-            setTimeout(() => performShuffle(count + 1), 350);
+        function startSelectionTimer() {
+            isInputLocked = false;
+            let timeLeft = 10;
+            status.innerText = `CHOOSE THE CORRECT KEY - ${timeLeft}s`;
+            
+            selectionTimer = setInterval(() => {
+                timeLeft--;
+                if (timeLeft <= 0) {
+                    clearInterval(selectionTimer);
+                    if (!isInputLocked) {
+                        isInputLocked = true;
+                        fadeAudio();
+                        status.innerText = "TIME OUT - ELIMINATED";
+                        setTimeout(() => location.reload(), 2000);
+                    }
+                } else {
+                    status.innerText = `CHOOSE THE CORRECT KEY - ${timeLeft}s`;
+                }
+            }, 1000);
+        }
+
+        function fadeAudio() {
+            let volume = player.getVolume();
+            const fadeInterval = setInterval(() => {
+                if (volume > 0) {
+                    volume -= 5;
+                    player.setVolume(volume);
+                } else {
+                    player.pauseVideo();
+                    clearInterval(fadeInterval);
+                }
+            }, 100);
         }
 
         function handleSelection(clickedObj) {
             if(isInputLocked) return;
+            isInputLocked = true;
+            if (selectionTimer) clearInterval(selectionTimer);
+            fadeAudio();
 
             if(clickedObj.id === winningId) {
-                document.getElementById('safe-msg').style.display = 'block';
-                status.innerText = "";
-                isInputLocked = true;
+                // SUCCESS LOGIC: Fade to black
+                status.style.opacity = "0";
+                winScreen.classList.add('visible');
+
+                // Pan text up and fade in retry button after initial blackout
+                setTimeout(() => {
+                    const safeBox = winScreen.querySelector('.safe-box');
+                    safeBox.style.transform = 'translateY(-30px)';
+                    retryBtn.style.opacity = "1";
+                    retryBtn.style.pointerEvents = "auto";
+                }, 2000);
             } else {
+                // FAILURE LOGIC
                 status.innerText = "ELIMINATED";
                 clickedObj.element.style.opacity = "0.1";
-                isInputLocked = true;
                 setTimeout(() => location.reload(), 2000);
             }
         }
 
+        function resetGame() {
+            if (selectionTimer) clearInterval(selectionTimer);
+            winScreen.classList.remove('visible');
+            gameStarted = false;
+            isInputLocked = true;
+            status.style.opacity = "1";
+            status.innerText = "CLICK TO START THE CHALLENGE";
+            
+            // Reset styles for next time
+            const safeBox = winScreen.querySelector('.safe-box');
+            safeBox.style.transform = 'translateY(0)';
+            retryBtn.style.opacity = "0";
+            retryBtn.style.pointerEvents = "none";
+            
+            init();
+        }
+
+        retryBtn.onclick = (e) => {
+            e.stopPropagation();
+            resetGame();
+        };
+
+        window.onclick = () => { if(!gameStarted) startChallenge(); };
         init();
     </script>
 </body>
