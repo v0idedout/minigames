@@ -71,6 +71,16 @@
             filter: drop-shadow(0 0 15px #00ff00);
         }
 
+        @keyframes blinkFadeJump {
+            0% { opacity: 1; }
+            80% { opacity: 0.45; }
+            100% { opacity: 1; }
+        }
+
+        .blinking {
+            animation: blinkFadeJump 0.6s linear infinite;
+        }
+
         /* NEW: Blackout Overlay */
         #win-screen {
             position: fixed;
@@ -240,7 +250,7 @@
         const retryBtn = document.getElementById('retry-btn');
         const menuScreen = document.getElementById('menu-screen');
         const backToMenuBtn = document.getElementById('back-to-menu');
-        
+       
         const grid = [
             {x: 100, y: 75}, {x: 300, y: 75}, {x: 500, y: 75},
             {x: 100, y: 225}, {x: 300, y: 225}, {x: 500, y: 225}
@@ -285,20 +295,23 @@
             currentMode = null;
             gameStarted = false;
             isInputLocked = true;
-            
+           
             menuScreen.style.display = 'flex';
             stage.style.display = 'none';
             status.style.display = 'none';
             backToMenuBtn.style.display = 'none';
             winScreen.classList.remove('visible');
-            
+           
             status.style.opacity = "1";
             status.innerText = "CLICK TO START THE CHALLENGE";
-            
+           
             const safeBox = winScreen.querySelector('.safe-box');
             safeBox.style.transform = 'translateY(0)';
             retryBtn.style.opacity = "0";
             retryBtn.style.pointerEvents = "none";
+
+            // Clear blinking if any
+            keyObjects.forEach(obj => obj.element.classList.remove('blinking'));
         }
 
         backToMenuBtn.onclick = (e) => {
@@ -340,7 +353,7 @@
             gameStarted = true;
             status.innerText = "CHOOSE THE CORRECT KEY";
             const minTime = 80;
-            const maxTime = 165; 
+            const maxTime = 165;
             const startTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
             player.seekTo(startTime);
             player.playVideo();
@@ -353,31 +366,39 @@
             keyObjects[winningId].element.classList.add('active');
             setTimeout(() => {
                 keyObjects[winningId].element.classList.remove('active');
+                
+                if (currentMode === 'EN-008-02') {
+                    keyObjects.forEach(obj => obj.element.classList.add('blinking'));
+                }
+                
                 performShuffle(0);
             }, 1800);
         }
 
         function performShuffle(count) {
-            // Speed up shuffle for EN-008-02
             let shuffleSpeed = 370;
-            let totalSteps = 36;
+            let totalSteps = 45;
 
-            if (currentMode === 'EN-008') {
-                shuffleSpeed = 300;
-                totalSteps = 45;
+            if (currentMode === '-EN-008') {
+                shuffleSpeed = 400;
+                totalSteps = 38; // ~15 seconds
+            } else if (currentMode === 'EN-008') {
+                shuffleSpeed = 350;
+                totalSteps = 45; // current
             } else if (currentMode === 'EN-008-02') {
-                shuffleSpeed = 220;
-                totalSteps = 60;
+                shuffleSpeed = 350;
+                totalSteps = 114; // ~25 seconds
             }
 
-            if (count >= totalSteps) { // ~20 seconds (36 * 550ms ≈ 20s)
+            if (count >= totalSteps) {
+                keyObjects.forEach(obj => obj.element.classList.remove('blinking'));
                 startSelectionTimer();
                 return;
             }
 
             // Decide how many keys to shuffle (between 2 and 4)
-            const numToShuffle = Math.floor(Math.random() * 3) + 2; 
-            
+            const numToShuffle = Math.floor(Math.random() * 3) + 2;
+           
             // Get unique indices to shuffle
             let indices = [];
             while(indices.length < numToShuffle) {
@@ -403,7 +424,7 @@
             isInputLocked = false;
             let timeLeft = 10;
             status.innerText = `CHOOSE THE CORRECT KEY - ${timeLeft}s`;
-            
+           
             selectionTimer = setInterval(() => {
                 timeLeft--;
                 if (timeLeft <= 0) {
@@ -467,17 +488,17 @@
             isInputLocked = true;
             status.style.opacity = "1";
             status.innerText = "CLICK TO START THE CHALLENGE";
-            
+           
             // Ensure the back button and game stage are visible
             backToMenuBtn.style.display = 'block';
             stage.style.display = 'block';
-            
+           
             // Reset styles for next time
             const safeBox = winScreen.querySelector('.safe-box');
             safeBox.style.transform = 'translateY(0)';
             retryBtn.style.opacity = "0";
             retryBtn.style.pointerEvents = "none";
-            
+           
             init();
         }
 
