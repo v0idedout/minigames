@@ -86,15 +86,50 @@
             opacity: 0;
             visibility: hidden;
             transition: opacity 1.5s ease;
-            z-index: 200;
+            z-index: 600;
         }
 
-        #win-screen.visible {
+        #win-screen.visible, #death-screen.visible {
             opacity: 1;
             visibility: visible;
         }
 
-        .safe-box {
+        #death-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: black;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 1s ease;
+            z-index: 600;
+        }
+
+        #death-blackout {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: black;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 1.2s ease;
+            z-index: 400;
+        }
+
+        #death-blackout.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .safe-box, .death-box {
             border: 1.5px solid #00ff00;
             padding: 12px 35px;
             background: rgba(0, 0, 0, 0.8);
@@ -105,7 +140,12 @@
             transition: transform 1.5s ease-in-out;
         }
 
-        #retry-btn {
+        .death-box {
+            border-color: #ff0000;
+            color: #ff0000;
+        }
+
+        #retry-btn, #death-retry-btn {
             margin-top: 40px;
             padding: 12px 30px;
             background: transparent;
@@ -121,16 +161,44 @@
             transition: opacity 2s ease, background 0.3s;
         }
 
-        #retry-btn:hover {
+        #death-retry-btn {
+            border-color: #ff0000;
+            color: #ff0000;
+        }
+
+        #retry-btn:hover, #death-retry-btn:hover {
             background: rgba(0, 255, 0, 0.1);
         }
 
-        #youtube-player {
-            position: absolute;
-            top: -9999px;
-            left: -9999px;
-            visibility: hidden;
+        #death-retry-btn:hover {
+            background: rgba(255, 0, 0, 0.1);
         }
+
+        #youtube-player {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 100vw;
+            height: 100vh;
+            transform: translate(-50%, -50%);
+            z-index: 500;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        /* Ensure the video fills the screen (covering black bars) */
+        @media (min-aspect-ratio: 16/9) {
+            #youtube-player {
+                height: 56.25vw;
+            }
+        }
+
+        @media (max-aspect-ratio: 16/9) {
+            #youtube-player {
+                width: 177.78vh;
+            }
+        }
+        
         #back-btn {
             position: absolute;
             top: 20px;
@@ -296,6 +364,13 @@
         <button id="retry-btn">TRY AGAIN</button>
     </div>
 
+    <div id="death-screen">
+        <div class="death-box" id="death-msg">you died to [mode]</div>
+        <button id="death-retry-btn">TRY AGAIN</button>
+    </div>
+
+    <div id="death-blackout"></div>
+
     <div id="youtube-player"></div>
 
     <script>
@@ -303,8 +378,14 @@
         const status = document.getElementById('status-msg');
         const winScreen = document.getElementById('win-screen');
         const retryBtn = document.getElementById('retry-btn');
+        const deathScreen = document.getElementById('death-screen');
+        const deathMsg = document.getElementById('death-msg');
+        const deathRetryBtn = document.getElementById('death-retry-btn');
         const menuScreen = document.getElementById('menu-screen');
         const backToMenuBtn = document.getElementById('back-to-menu');
+        const blackout = document.getElementById('death-blackout');
+        const deathVideoId = '7JspcP6uP5s';
+        const ambientVideoId = 'OmahQ9RFOPo';
        
         const grid = [
             {x: 100, y: 75}, {x: 300, y: 75}, {x: 500, y: 75},
@@ -333,11 +414,41 @@
 
         function onYouTubeIframeAPIReady() {
             player = new YT.Player('youtube-player', {
-                height: '0',
-                width: '0',
-                videoId: 'OmahQ9RFOPo',
-                events: { 'onReady': () => console.log("Audio Ready") }
+                height: '100%',
+                width: '100%',
+                videoId: ambientVideoId,
+                playerVars: { 
+                    'autoplay': 0, 
+                    'controls': 0, 
+                    'showinfo': 0, 
+                    'rel': 0, 
+                    'iv_load_policy': 3,
+                    'modestbranding': 1
+                },
+                events: { 
+                    'onReady': () => console.log("Audio Ready"),
+                    'onStateChange': onPlayerStateChange
+                }
             });
+        }
+
+        function onPlayerStateChange(event) {
+            // Check if the death video has ended
+            if (event.data === YT.PlayerState.ENDED && player.getVideoData().video_id === deathVideoId) {
+                showDeathScreen();
+            }
+        }
+
+        function showDeathScreen() {
+            deathMsg.innerText = `you died to ${currentMode}`;
+            deathScreen.classList.add('visible');
+            
+            // Pan text up and fade in retry button
+            setTimeout(() => {
+                deathMsg.style.transform = 'translateY(-30px)';
+                deathRetryBtn.style.opacity = "1";
+                deathRetryBtn.style.pointerEvents = "auto";
+            }, 500);
         }
 
         // Central cleanup: cancel every pending timer/interval
@@ -365,10 +476,21 @@
             status.innerText = 'CLICK TO START THE CHALLENGE';
             backToMenuBtn.style.display = 'block';
             winScreen.classList.remove('visible');
+            deathScreen.classList.remove('visible');
+            blackout.classList.remove('visible');
             const safeBox = winScreen.querySelector('.safe-box');
             safeBox.style.transform = 'translateY(0)';
+            deathMsg.style.transform = 'translateY(0)';
             retryBtn.style.opacity = '0';
             retryBtn.style.pointerEvents = 'none';
+            deathRetryBtn.style.opacity = '0';
+            deathRetryBtn.style.pointerEvents = 'none';
+            
+            // Ensure player is reset to ambient track
+            player.loadVideoById(ambientVideoId);
+            player.pauseVideo();
+            document.getElementById('youtube-player').style.visibility = 'hidden';
+            
             init();
         }
 
@@ -377,22 +499,31 @@
             currentMode = null;
             gameStarted = false;
             isInputLocked = true;
-           
+            
             menuScreen.style.display = 'flex';
             stage.style.display = 'none';
             status.style.display = 'none';
             backToMenuBtn.style.display = 'none';
             winScreen.classList.remove('visible');
-           
+            deathScreen.classList.remove('visible');
+            blackout.classList.remove('visible');
+            
             status.style.opacity = "1";
             status.innerText = "CLICK TO START THE CHALLENGE";
-           
+            
             const safeBox = winScreen.querySelector('.safe-box');
             safeBox.style.transform = 'translateY(0)';
+            deathMsg.style.transform = 'translateY(0)';
             retryBtn.style.opacity = "0";
             retryBtn.style.pointerEvents = "none";
+            deathRetryBtn.style.opacity = "0";
+            deathRetryBtn.style.pointerEvents = "none";
             stage.innerHTML = '';
             keyObjects = [];
+
+            player.loadVideoById(ambientVideoId);
+            player.pauseVideo();
+            document.getElementById('youtube-player').style.visibility = 'hidden';
         }
 
         backToMenuBtn.onclick = (e) => {
@@ -439,7 +570,9 @@
             const minTime = 80;
             const maxTime = 165;
             const startTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
-            player.seekTo(startTime);
+            
+            document.getElementById('youtube-player').style.visibility = 'hidden';
+            player.loadVideoById(ambientVideoId, startTime);
             player.playVideo();
             fadeInAudio();
             revealWinner();
@@ -455,7 +588,6 @@
         }
 
         function performShuffle(count) {
-            // hi this is the shuffle function
             let shuffleSpeed = 370;
             let totalSteps = 36;
 
@@ -467,22 +599,18 @@
                 totalSteps = 60;
             }
 
-            if (count >= totalSteps) { // ~20 seconds (36 * 550ms ≈ 20s)
+            if (count >= totalSteps) {
                 startSelectionTimer();
                 return;
             }
 
-            // Decide how many keys to shuffle (between 2 and 4)
             const numToShuffle = Math.floor(Math.random() * 3) + 2;
-           
-            // Get unique indices to shuffle
             let indices = [];
             while(indices.length < numToShuffle) {
                 let r = Math.floor(Math.random() * 6);
                 if(indices.indexOf(r) === -1) indices.push(r);
             }
 
-            // Perform a cyclic swap of positions for the selected keys
             let firstPos = keyObjects[indices[0]].posIndex;
             for(let i = 0; i < indices.length - 1; i++) {
                 keyObjects[indices[i]].posIndex = keyObjects[indices[i+1]].posIndex;
@@ -500,16 +628,13 @@
             isInputLocked = false;
             let timeLeft = 10;
             status.innerText = `CHOOSE THE CORRECT KEY - ${timeLeft}s`;
-           
+            
             selectionTimer = setInterval(() => {
                 timeLeft--;
                 if (timeLeft <= 0) {
                     clearInterval(selectionTimer);
                     if (!isInputLocked) {
-                        isInputLocked = true;
-                        fadeAudio();
-                        status.innerText = "TIME OUT - ELIMINATED";
-                        eliminateTimeout = setTimeout(() => resetGame(), 2000);
+                        triggerDeathSequence();
                     }
                 } else {
                     status.innerText = `CHOOSE THE CORRECT KEY - ${timeLeft}s`;
@@ -532,19 +657,34 @@
             }, 100);
         }
 
+        function triggerDeathSequence() {
+            isInputLocked = true;
+            if (selectionTimer) clearInterval(selectionTimer);
+            
+            // Show blackout first
+            blackout.classList.add('visible');
+
+            // Wait for fade to complete before playing video
+            setTimeout(() => {
+                const playerEl = document.getElementById('youtube-player');
+                playerEl.style.visibility = 'visible';
+                player.loadVideoById(deathVideoId);
+                player.setVolume(100);
+                player.playVideo();
+            }, 1200);
+        }
+
         function handleSelection(clickedObj) {
             if(isInputLocked) return;
             isInputLocked = true;
             if (selectionTimer) clearInterval(selectionTimer);
-            fadeAudio();
 
             if(clickedObj.id === winningId) {
-                // SUCCESS LOGIC: Fade to black
+                fadeAudio();
                 status.style.opacity = "0";
                 backToMenuBtn.style.display = 'none';
                 winScreen.classList.add('visible');
 
-                // Pan text up and fade in retry button after initial blackout
                 resetTimeout = setTimeout(() => {
                     const safeBox = winScreen.querySelector('.safe-box');
                     safeBox.style.transform = 'translateY(-30px)';
@@ -552,38 +692,51 @@
                     retryBtn.style.pointerEvents = "auto";
                 }, 2000);
             } else {
-                // FAILURE LOGIC
-                status.innerText = "ELIMINATED";
-                clickedObj.element.style.opacity = "0.1";
-                eliminateTimeout = setTimeout(() => resetGame(), 2000);
+                triggerDeathSequence();
             }
         }
 
         function resetGame() {
             cleanupAll();
             winScreen.classList.remove('visible');
+            deathScreen.classList.remove('visible');
+            blackout.classList.remove('visible');
             gameStarted = false;
             isInputLocked = true;
             status.style.opacity = "1";
             status.innerText = "CLICK TO START THE CHALLENGE";
-           
-            // Ensure the back button and game stage are visible
+            
+            // Reset player visibility
+            document.getElementById('youtube-player').style.visibility = 'hidden';
+            player.loadVideoById(ambientVideoId);
+            player.pauseVideo();
+
             backToMenuBtn.style.display = 'block';
             stage.style.display = 'block';
-           
-            // Reset styles for next time
+            
             const safeBox = winScreen.querySelector('.safe-box');
             safeBox.style.transform = 'translateY(0)';
+            deathMsg.style.transform = 'translateY(0)';
             retryBtn.style.opacity = "0";
             retryBtn.style.pointerEvents = "none";
-           
+            deathRetryBtn.style.opacity = "0";
+            deathRetryBtn.style.pointerEvents = "none";
+            
             init();
         }
 
-        // Use mousedown + check target to prevent mode-button clicks from auto-starting
+        deathRetryBtn.onclick = (e) => {
+            e.stopPropagation();
+            resetGame();
+        };
+
+        retryBtn.onclick = (e) => {
+            e.stopPropagation();
+            resetGame();
+        };
+
         window.addEventListener('click', (e) => {
-            // Don't start if the click was on a menu button, back button, or retry button
-            if (e.target.closest('.mode-btn') || e.target.closest('#back-to-menu') || e.target.closest('#retry-btn') || e.target.closest('#back-btn')) return;
+            if (e.target.closest('.mode-btn') || e.target.closest('#back-to-menu') || e.target.closest('#retry-btn') || e.target.closest('#death-retry-btn') || e.target.closest('#back-btn')) return;
             if(currentMode && !gameStarted) startChallenge();
         });
     </script>
