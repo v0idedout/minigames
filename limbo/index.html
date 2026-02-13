@@ -71,16 +71,6 @@
             filter: drop-shadow(0 0 15px #00ff00);
         }
 
-        @keyframes blinkFadeJump {
-            0% { opacity: 1; }
-            80% { opacity: 0.45; }
-            100% { opacity: 1; }
-        }
-
-        .blinking {
-            animation: blinkFadeJump 0.6s linear infinite;
-        }
-
         /* NEW: Blackout Overlay */
         #win-screen {
             position: fixed;
@@ -176,6 +166,13 @@
             gap: 30px;
         }
 
+        .mode-wrapper {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
         .mode-btn {
             padding: 20px 40px;
             background: rgba(0, 0, 0, 0.6);
@@ -188,13 +185,49 @@
             transition: all 0.3s ease;
             text-shadow: 0 0 5px #e0a0ff;
             box-shadow: 0 0 10px rgba(224, 160, 255, 0.3);
+            position: relative;
+            z-index: 11;
         }
 
         .mode-btn:hover {
             background: #e0a0ff;
             color: #000;
             box-shadow: 0 0 20px #e0a0ff;
-            transform: translateY(-5px);
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: rgba(40, 0, 40, 0.95);
+            border: 2px solid #e0a0ff;
+            border-top: none;
+            padding: 0 10px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+            font-size: 13px;
+            color: #ffffff;
+            text-align: center;
+            z-index: 10;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .mode-wrapper:hover .info-panel {
+            max-height: 100px;
+            padding: 15px 10px;
+        }
+
+        .info-panel p {
+            margin: 5px 0;
+            font-weight: bold;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .info-panel span {
+            color: #e0a0ff;
         }
 
         #back-to-menu {
@@ -225,9 +258,31 @@
     <div id="menu-screen">
         <div id="menu-title">SELECT GAMEMODE</div>
         <div class="modes-container">
-            <button class="mode-btn" onclick="selectMode('-EN-008')">-EN-008</button>
-            <button class="mode-btn" onclick="selectMode('EN-008')">EN-008</button>
-            <button class="mode-btn" onclick="selectMode('EN-008-02')">EN-008-02</button>
+            <div class="mode-wrapper">
+                <button class="mode-btn" onclick="selectMode('-EN-008')">-EN-008</button>
+                <div class="info-panel">
+                    <p>easy, for babies.</p>
+                
+                    <p>Speed: <span>370ms</span></p>
+                    <p>Time: <span>13.3s</span></p>
+                </div>
+            </div>
+            <div class="mode-wrapper">
+                <button class="mode-btn" onclick="selectMode('EN-008')">EN-008</button>
+                <div class="info-panel">
+                    <p>average difficulty.</p>
+                    <p>Speed: <span>300ms</span></p>
+                    <p>Time: <span>13.5s</span></p>
+                </div>
+            </div>
+            <div class="mode-wrapper">
+                <button class="mode-btn" onclick="selectMode('EN-008-02')">EN-008-02</button>
+                <div class="info-panel">
+                    <p>ultimate eye trainer mode.</p>
+                    <p>Speed: <span>220ms</span></p>
+                    <p>Time: <span>13.2s</span></p>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -264,6 +319,13 @@
         let selectionTimer = null;
         let currentMode = null;
 
+        // Track ALL timeouts and intervals so we can cancel them on mode switch
+        let shuffleTimeout = null;
+        let fadeInInterval = null;
+        let fadeOutInterval = null;
+        let resetTimeout = null;
+        let eliminateTimeout = null;
+
         const tag = document.createElement('script');
         tag.src = "https://www.youtube.com/iframe_api";
         const firstScriptTag = document.getElementsByTagName('script')[0];
@@ -278,20 +340,40 @@
             });
         }
 
+        // Central cleanup: cancel every pending timer/interval
+        function cleanupAll() {
+            if (selectionTimer) { clearInterval(selectionTimer); selectionTimer = null; }
+            if (shuffleTimeout) { clearTimeout(shuffleTimeout); shuffleTimeout = null; }
+            if (fadeInInterval) { clearInterval(fadeInInterval); fadeInInterval = null; }
+            if (fadeOutInterval) { clearInterval(fadeOutInterval); fadeOutInterval = null; }
+            if (resetTimeout) { clearTimeout(resetTimeout); resetTimeout = null; }
+            if (eliminateTimeout) { clearTimeout(eliminateTimeout); eliminateTimeout = null; }
+            if (player && typeof player.pauseVideo === 'function') {
+                try { player.pauseVideo(); } catch(e) {}
+            }
+        }
+
         function selectMode(mode) {
+            cleanupAll();
             currentMode = mode;
+            gameStarted = false;
+            isInputLocked = true;
             menuScreen.style.display = 'none';
             stage.style.display = 'block';
             status.style.display = 'block';
+            status.style.opacity = '1';
+            status.innerText = 'CLICK TO START THE CHALLENGE';
             backToMenuBtn.style.display = 'block';
+            winScreen.classList.remove('visible');
+            const safeBox = winScreen.querySelector('.safe-box');
+            safeBox.style.transform = 'translateY(0)';
+            retryBtn.style.opacity = '0';
+            retryBtn.style.pointerEvents = 'none';
             init();
         }
 
         function backToMenu() {
-            if (selectionTimer) clearInterval(selectionTimer);
-            if (player) {
-                player.pauseVideo();
-            }
+            cleanupAll();
             currentMode = null;
             gameStarted = false;
             isInputLocked = true;
@@ -309,9 +391,8 @@
             safeBox.style.transform = 'translateY(0)';
             retryBtn.style.opacity = "0";
             retryBtn.style.pointerEvents = "none";
-
-            // Clear blinking if any
-            keyObjects.forEach(obj => obj.element.classList.remove('blinking'));
+            stage.innerHTML = '';
+            keyObjects = [];
         }
 
         backToMenuBtn.onclick = (e) => {
@@ -336,20 +417,23 @@
         }
 
         function fadeInAudio() {
+            if (fadeInInterval) clearInterval(fadeInInterval);
             let volume = 0;
             player.setVolume(0);
-            const fadeInterval = setInterval(() => {
+            fadeInInterval = setInterval(() => {
                 if (volume < 100) {
                     volume += 5;
                     player.setVolume(volume);
                 } else {
-                    clearInterval(fadeInterval);
+                    clearInterval(fadeInInterval);
+                    fadeInInterval = null;
                 }
             }, 100);
         }
 
         function startChallenge() {
             if(!currentMode || gameStarted || !player) return;
+            if(typeof player.playVideo !== 'function') return;
             gameStarted = true;
             status.innerText = "CHOOSE THE CORRECT KEY";
             const minTime = 80;
@@ -364,34 +448,26 @@
         function revealWinner() {
             winningId = Math.floor(Math.random() * 6);
             keyObjects[winningId].element.classList.add('active');
-            setTimeout(() => {
+            shuffleTimeout = setTimeout(() => {
                 keyObjects[winningId].element.classList.remove('active');
-                
-                if (currentMode === 'EN-008-02') {
-                    keyObjects.forEach(obj => obj.element.classList.add('blinking'));
-                }
-                
                 performShuffle(0);
             }, 1800);
         }
 
         function performShuffle(count) {
+            // hi this is the shuffle function
             let shuffleSpeed = 370;
-            let totalSteps = 45;
+            let totalSteps = 36;
 
-            if (currentMode === '-EN-008') {
-                shuffleSpeed = 400;
-                totalSteps = 38; // ~15 seconds
-            } else if (currentMode === 'EN-008') {
-                shuffleSpeed = 350;
-                totalSteps = 45; // current
+            if (currentMode === 'EN-008') {
+                shuffleSpeed = 300;
+                totalSteps = 45;
             } else if (currentMode === 'EN-008-02') {
-                shuffleSpeed = 350;
-                totalSteps = 114; // ~25 seconds
+                shuffleSpeed = 220;
+                totalSteps = 60;
             }
 
-            if (count >= totalSteps) {
-                keyObjects.forEach(obj => obj.element.classList.remove('blinking'));
+            if (count >= totalSteps) { // ~20 seconds (36 * 550ms ≈ 20s)
                 startSelectionTimer();
                 return;
             }
@@ -417,7 +493,7 @@
                 obj.element.style.left = grid[obj.posIndex].x + 'px';
                 obj.element.style.top = grid[obj.posIndex].y + 'px';
             });
-            setTimeout(() => performShuffle(count + 1), shuffleSpeed);
+            shuffleTimeout = setTimeout(() => performShuffle(count + 1), shuffleSpeed);
         }
 
         function startSelectionTimer() {
@@ -433,7 +509,7 @@
                         isInputLocked = true;
                         fadeAudio();
                         status.innerText = "TIME OUT - ELIMINATED";
-                        setTimeout(() => resetGame(), 2000);
+                        eliminateTimeout = setTimeout(() => resetGame(), 2000);
                     }
                 } else {
                     status.innerText = `CHOOSE THE CORRECT KEY - ${timeLeft}s`;
@@ -442,14 +518,16 @@
         }
 
         function fadeAudio() {
+            if (fadeOutInterval) clearInterval(fadeOutInterval);
             let volume = player.getVolume();
-            const fadeInterval = setInterval(() => {
+            fadeOutInterval = setInterval(() => {
                 if (volume > 0) {
                     volume -= 5;
                     player.setVolume(volume);
                 } else {
                     player.pauseVideo();
-                    clearInterval(fadeInterval);
+                    clearInterval(fadeOutInterval);
+                    fadeOutInterval = null;
                 }
             }, 100);
         }
@@ -467,7 +545,7 @@
                 winScreen.classList.add('visible');
 
                 // Pan text up and fade in retry button after initial blackout
-                setTimeout(() => {
+                resetTimeout = setTimeout(() => {
                     const safeBox = winScreen.querySelector('.safe-box');
                     safeBox.style.transform = 'translateY(-30px)';
                     retryBtn.style.opacity = "1";
@@ -477,12 +555,12 @@
                 // FAILURE LOGIC
                 status.innerText = "ELIMINATED";
                 clickedObj.element.style.opacity = "0.1";
-                setTimeout(() => resetGame(), 2000);
+                eliminateTimeout = setTimeout(() => resetGame(), 2000);
             }
         }
 
         function resetGame() {
-            if (selectionTimer) clearInterval(selectionTimer);
+            cleanupAll();
             winScreen.classList.remove('visible');
             gameStarted = false;
             isInputLocked = true;
@@ -502,8 +580,12 @@
             init();
         }
 
-        window.onclick = () => { if(currentMode && !gameStarted) startChallenge(); };
-        // Remove init() from end since it's called in selectMode
+        // Use mousedown + check target to prevent mode-button clicks from auto-starting
+        window.addEventListener('click', (e) => {
+            // Don't start if the click was on a menu button, back button, or retry button
+            if (e.target.closest('.mode-btn') || e.target.closest('#back-to-menu') || e.target.closest('#retry-btn') || e.target.closest('#back-btn')) return;
+            if(currentMode && !gameStarted) startChallenge();
+        });
     </script>
 </body>
 </html>
