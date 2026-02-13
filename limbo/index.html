@@ -71,6 +71,15 @@
             filter: drop-shadow(0 0 15px #00ff00);
         }
 
+        @keyframes key-blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.45; }
+        }
+
+        .key-sprite.blinking {
+            animation: key-blink 0.5s ease-in-out infinite;
+        }
+
         /* NEW: Blackout Overlay */
         #win-screen {
             position: fixed;
@@ -347,7 +356,7 @@
                 <button class="mode-btn" onclick="selectMode('EN-008-02')">EN-008-02</button>
                 <div class="info-panel">
                     <p>ultimate eye trainer mode.</p>
-                    <p>Speed: <span>220ms</span></p>
+                    <p>Speed: <span>300ms</span></p>
                     <p>Time: <span>13.2s</span></p>
                 </div>
             </div>
@@ -486,12 +495,14 @@
             deathRetryBtn.style.opacity = '0';
             deathRetryBtn.style.pointerEvents = 'none';
             
-            // Ensure player is reset to ambient track
-            player.loadVideoById(ambientVideoId);
-            player.pauseVideo();
-            document.getElementById('youtube-player').style.visibility = 'hidden';
-            
             init();
+
+            // Ensure player is reset to ambient track
+            if (player && typeof player.loadVideoById === 'function') {
+                player.loadVideoById(ambientVideoId);
+                player.pauseVideo();
+            }
+            document.getElementById('youtube-player').style.visibility = 'hidden';
         }
 
         function backToMenu() {
@@ -521,8 +532,10 @@
             stage.innerHTML = '';
             keyObjects = [];
 
-            player.loadVideoById(ambientVideoId);
-            player.pauseVideo();
+            if (player && typeof player.loadVideoById === 'function') {
+                player.loadVideoById(ambientVideoId);
+                player.pauseVideo();
+            }
             document.getElementById('youtube-player').style.visibility = 'hidden';
         }
 
@@ -583,6 +596,9 @@
             keyObjects[winningId].element.classList.add('active');
             shuffleTimeout = setTimeout(() => {
                 keyObjects[winningId].element.classList.remove('active');
+                if (currentMode === 'EN-008-02') {
+                    keyObjects.forEach(obj => obj.element.classList.add('blinking'));
+                }
                 performShuffle(0);
             }, 1800);
         }
@@ -595,11 +611,12 @@
                 shuffleSpeed = 300;
                 totalSteps = 45;
             } else if (currentMode === 'EN-008-02') {
-                shuffleSpeed = 220;
+                shuffleSpeed = 300;
                 totalSteps = 60;
             }
 
             if (count >= totalSteps) {
+                keyObjects.forEach(obj => obj.element.classList.remove('blinking'));
                 startSelectionTimer();
                 return;
             }
@@ -708,8 +725,10 @@
             
             // Reset player visibility
             document.getElementById('youtube-player').style.visibility = 'hidden';
-            player.loadVideoById(ambientVideoId);
-            player.pauseVideo();
+            if (player && typeof player.loadVideoById === 'function') {
+                player.loadVideoById(ambientVideoId);
+                player.pauseVideo();
+            }
 
             backToMenuBtn.style.display = 'block';
             stage.style.display = 'block';
