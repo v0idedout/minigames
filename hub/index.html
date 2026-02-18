@@ -8,41 +8,62 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+    <div class="scanlines"></div>
+
     <header>
-        <h1>The Abyss</h1>
-        <p>play some games while you're at it.</p>
+        <div class="header-insert">INSERT COIN</div>
+        <h1>THE ABYSS</h1>
+        <p id="subtitle">play some games while you're at it.</p>
     </header>
 
     <main class="arcade-cabinet">
-        <a href="../fate-ality/" class="game-card">
+
+        <a href="../fate-ality/" class="game-card card-fateality">
+            <div class="card-tag">01</div>
+            <div class="card-icon">🎲</div>
             <h2>FATE-ALITY</h2>
-            <p>"i love gambling my fate"</p>
+            <p>i love gambling my fate</p>
+            <div class="card-genre">SURVIVAL · ESCAPE</div>
         </a>
-        
-        <a href="../paths-of-pain/" class="game-card">
-            <h2>paths of pain</h2>
+
+        <a href="../paths-of-pain/" class="game-card card-pain">
+            <div class="card-tag">02</div>
+            <div class="card-icon">💀</div>
+            <h2>PATHS OF PAIN</h2>
             <p>hollow knight ref? *vineboom*</p>
+            <div class="card-genre">MAZE · SPEEDRUN</div>
         </a>
 
-        <a href="../limbo/" class="game-card">
-            <h2>limbo</h2>
-            <p>KEY SHUFFLING HELL!!!</p>
+        <a href="../limbo/" class="game-card card-limbo">
+            <div class="card-tag">03</div>
+            <div class="card-icon">🔑</div>
+            <h2>LIMBO</h2>
+            <p>key shuffling hell!!!</p>
+            <div class="card-genre">REACTION · RHYTHM</div>
         </a>
 
-        <a href="../flatcraft/" class="game-card">
-            <h2>flatestearth</h2>
+        <a href="../flatcraft/" class="game-card card-flatcraft">
+            <div class="card-tag">04</div>
+            <div class="card-icon">⛏️</div>
+            <h2>FLATESTEARTH</h2>
             <p>ripoff minecraft? o.O</p>
+            <div class="card-genre">SANDBOX · BUILDER</div>
         </a>
 
-        <!-- Placeholder for future games -->
-        <div class="game-card" style="opacity: 0.5; cursor: default;">
-            <h2>Coming Soon</h2>
-            <p>???</p>
+        <div class="game-card card-soon">
+            <div class="card-tag">??</div>
+            <div class="card-icon">📡</div>
+            <h2>COMING SOON</h2>
+            <p>transmission incoming...</p>
+            <div class="card-genre">UNKNOWN</div>
         </div>
+
     </main>
 
     <footer>
-        &copy; 2026 The Arcade
+        <span>&copy; 2026 THE ABYSS ARCADE</span>
+        <span class="footer-blink">▮</span>
     </footer>
 
     <script src="hub.js"></script>

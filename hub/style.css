@@ -1,164 +1,282 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap');
 
-body {
-    background-color: #050505;
-    /* Starry Background */
-    background-image: 
-        radial-gradient(white, rgba(255,255,255,.2) 2px, transparent 3px),
-        radial-gradient(white, rgba(255,255,255,.15) 1px, transparent 2px),
-        radial-gradient(white, rgba(255,255,255,.1) 2px, transparent 3px);
-    background-size: 550px 550px, 350px 350px, 250px 250px;
-    background-position: 0 0, 40px 60px, 130px 270px;
-    
-    color: #e0e0e0;
-    font-family: 'VT323', monospace; /* Retro font fallback */
+/* ─── Reset & Base ─────────────────────────────────────────── */
+*, *::before, *::after {
+    box-sizing: border-box;
     margin: 0;
     padding: 0;
+}
+
+body {
+    background-color: #050505;
+    background-image:
+        radial-gradient(white, rgba(255,255,255,.18) 2px, transparent 3px),
+        radial-gradient(white, rgba(255,255,255,.12) 1px, transparent 2px),
+        radial-gradient(white, rgba(255,255,255,.08) 2px, transparent 3px);
+    background-size: 550px 550px, 350px 350px, 250px 250px;
+    background-position: 0 0, 40px 60px, 130px 270px;
+    color: #e0e0e0;
+    font-family: 'VT323', monospace;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
     align-items: center;
-    min-height: 100vh;
     overflow-x: hidden;
-    text-shadow: 2px 2px 0px #000;
 }
 
-/* Subtle flicking overlay */
-body::after {
-    content: " ";
-    display: block;
-    position: absolute;
-    top: 0; 
-    left: 0;
-    bottom: 0;
-    right: 0;
-    background: rgba(18, 16, 16, 0.1);
-    opacity: 0;
-    z-index: 2;
+/* ─── CRT Scanlines overlay ────────────────────────────────── */
+.scanlines {
     pointer-events: none;
-    animation: flicker 0.15s infinite;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+        to bottom,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.18) 2px,
+        rgba(0, 0, 0, 0.18) 4px
+    );
+    animation: flicker 0.12s infinite;
 }
 
+/* ─── Header ───────────────────────────────────────────────── */
 header {
     text-align: center;
-    margin-top: 50px;
-    margin-bottom: 50px;
+    margin-top: 60px;
+    margin-bottom: 55px;
     z-index: 10;
     position: relative;
-    animation: none; /* Removed old animation */
+}
+
+.header-insert {
+    font-family: 'Press Start 2P', cursive;
+    font-size: 0.6rem;
+    letter-spacing: 0.35em;
+    color: #ff00de;
+    opacity: 0.7;
+    margin-bottom: 16px;
+    animation: blink 1s step-end infinite;
 }
 
 h1 {
     font-family: 'Press Start 2P', cursive;
-    font-size: 3rem;
-    margin: 0;
-    color: #ff00de; /* Neon Pink */
+    font-size: clamp(1.8rem, 5vw, 3.2rem);
+    color: #ff00de;
     text-transform: uppercase;
-    text-shadow: 
-        0 0 5px #ff00de,
-        0 0 10px #ff00de,
-        0 0 20px #ff00de,
-        0 0 40px #ff00aa,
-        4px 4px 0px #000000; /* Drop shadow for depth */
-    animation: pulsate 1.5s infinite alternate;
-    line-height: 1.5;
-    letter-spacing: normal;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
+    text-shadow:
+        0 0 6px #ff00de,
+        0 0 14px #ff00de,
+        0 0 30px #ff00aa,
+        4px 4px 0px #000;
+    animation: pulsate 2s ease-in-out infinite alternate;
 }
 
 header p {
     font-family: 'VT323', monospace;
-    font-size: 2rem;
-    color: #00ffcc; /* Neon Cyan */
-    margin-top: 20px;
-    text-shadow: 0 0 5px #00ffcc;
-    animation: blink 1s step-end infinite;
+    font-size: 1.7rem;
+    color: #00ffcc;
+    margin-top: 18px;
+    text-shadow: 0 0 6px #00ffcc;
 }
 
+/* ─── Card Grid ────────────────────────────────────────────── */
 .arcade-cabinet {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 40px;
-    max-width: 1200px;
-    padding: 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 32px;
+    width: min(1200px, 95vw);
+    padding: 0 20px 60px;
     z-index: 10;
 }
 
+/* ─── Game Card base ───────────────────────────────────────── */
 .game-card {
-    background: #111;
-    border: 4px solid #333;
-    border-radius: 4px;
-    width: 320px;
-    height: 240px;
+    background: #0d0d0d;
+    border: 2px solid #2a2a2a;
+    border-radius: 6px;
+    padding: 32px 24px 26px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     align-items: center;
+    gap: 10px;
     text-decoration: none;
     color: white;
     position: relative;
-    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-    box-shadow: 0 0 10px rgba(0,0,0,0.8);
     overflow: hidden;
+    cursor: pointer;
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease, background 0.25s ease;
+    /* top colour bar */
+    border-top: 4px solid #333;
 }
 
-/* CRT Screen reflection inside the card */
-.game-card::after {
-    content: '';
+/* corner tag */
+.card-tag {
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, rgba(0,0,0,0.6) 90%);
-    pointer-events: none;
-    opacity: 0.6;
+    top: 10px;
+    left: 12px;
+    font-family: 'Press Start 2P', cursive;
+    font-size: 0.5rem;
+    color: #444;
+    letter-spacing: 0.1em;
 }
 
-.game-card:hover {
-    transform: scale(1.05) translateY(-10px);
-    border-color: #00ffcc;
-    box-shadow: 
-        0 0 20px #00ffcc,
-        inset 0 0 20px #00ffcc;
-    z-index: 100;
-    background: #1a1a1a;
+/* emoji icon */
+.card-icon {
+    font-size: 2.4rem;
+    line-height: 1;
+    margin-bottom: 4px;
+    filter: drop-shadow(0 0 6px currentColor);
 }
 
 .game-card h2 {
     font-family: 'Press Start 2P', cursive;
-    font-size: 1.2rem;
-    margin-bottom: 20px;
-    color: #ffd700; /* Gold */
-    text-shadow: 3px 3px 0 #b84d09;
-    z-index: 1;
+    font-size: clamp(0.7rem, 2vw, 1rem);
     text-align: center;
-    line-height: 1.5;
-    padding: 0 10px;
+    line-height: 1.6;
+    color: #ffd700;
+    text-shadow: 2px 2px 0 #7a3600;
+    text-transform: uppercase;
 }
 
 .game-card p {
     font-family: 'VT323', monospace;
-    font-size: 1.5rem;
-    color: #e0e0e0;
-    z-index: 1;
-    text-shadow: 0 0 5px black;
+    font-size: 1.35rem;
+    color: #aaa;
+    text-align: center;
+    line-height: 1.3;
 }
 
-.game-card:hover::before {
-    transform: none; /* Reset old animation */
-    /* Could add scanline movement here if desired */
-}
-/* Removed old .game-card::before style entirely to replace with new clean style */
-.game-card::before {
-  display: none;
+.card-genre {
+    margin-top: auto;
+    font-family: 'Press Start 2P', cursive;
+    font-size: 0.45rem;
+    letter-spacing: 0.2em;
+    color: #444;
+    text-transform: uppercase;
+    border-top: 1px solid #222;
+    padding-top: 12px;
+    width: 100%;
+    text-align: center;
 }
 
-.game-card:hover h2 {
-    color: #fff;
-    text-shadow: 0 0 10px #00ffcc;
+/* inner glow layer */
+.game-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,255,255,0.04) 0%, transparent 70%);
+    pointer-events: none;
 }
 
-/* Animations */
+/* ─── Per-game accent colours ──────────────────────────────── */
+
+/* FATE-ALITY — pink/magenta */
+.card-fateality {
+    border-top-color: #ff00de;
+}
+.card-fateality:hover {
+    border-color: #ff00de;
+    box-shadow: 0 0 18px #ff00de88, inset 0 0 24px #ff00de22;
+    background: #130513;
+}
+.card-fateality:hover h2 {
+    color: #ff88f0;
+    text-shadow: 0 0 10px #ff00de;
+}
+.card-fateality:hover .card-genre { color: #ff00de99; }
+
+/* PATHS OF PAIN — electric blue */
+.card-pain {
+    border-top-color: #00aaff;
+}
+.card-pain:hover {
+    border-color: #00aaff;
+    box-shadow: 0 0 18px #00aaff88, inset 0 0 24px #00aaff22;
+    background: #03111a;
+}
+.card-pain:hover h2 {
+    color: #88ddff;
+    text-shadow: 0 0 10px #00aaff;
+}
+.card-pain:hover .card-genre { color: #00aaff99; }
+
+/* LIMBO — acid green */
+.card-limbo {
+    border-top-color: #39ff14;
+}
+.card-limbo:hover {
+    border-color: #39ff14;
+    box-shadow: 0 0 18px #39ff1488, inset 0 0 24px #39ff1422;
+    background: #04130200;
+}
+.card-limbo:hover h2 {
+    color: #aaff88;
+    text-shadow: 0 0 10px #39ff14;
+}
+.card-limbo:hover .card-genre { color: #39ff1499; }
+
+/* FLATESTEARTH — warm amber */
+.card-flatcraft {
+    border-top-color: #ff9500;
+}
+.card-flatcraft:hover {
+    border-color: #ff9500;
+    box-shadow: 0 0 18px #ff950088, inset 0 0 24px #ff950022;
+    background: #130a00;
+}
+.card-flatcraft:hover h2 {
+    color: #ffd080;
+    text-shadow: 0 0 10px #ff9500;
+}
+.card-flatcraft:hover .card-genre { color: #ff950099; }
+
+/* COMING SOON — muted */
+.card-soon {
+    opacity: 0.45;
+    cursor: default;
+    border-top-color: #333;
+    pointer-events: none;
+}
+
+/* hover lift — shared */
+.game-card:not(.card-soon):hover {
+    transform: translateY(-8px) scale(1.03);
+    z-index: 20;
+}
+.game-card:not(.card-soon):hover .card-tag {
+    color: #666;
+}
+
+/* ─── Footer ───────────────────────────────────────────────── */
+footer {
+    margin-top: auto;
+    padding: 18px 24px;
+    font-size: 1.1rem;
+    color: #555;
+    font-family: 'VT323', monospace;
+    text-align: center;
+    width: 100%;
+    border-top: 1px solid #1c1c1c;
+    background: #000;
+    z-index: 10;
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    letter-spacing: 0.08em;
+}
+
+.footer-blink {
+    animation: blink 1s step-end infinite;
+    color: #ff00de88;
+}
+
+/* ─── Animations ───────────────────────────────────────────── */
 @keyframes pulsate {
-    0% { transform: scale(1); text-shadow: 0 0 10px #ff00de, 0 0 20px #ff00de; }
-    100% { transform: scale(1.02); text-shadow: 0 0 20px #ff00de, 0 0 40px #ff00de, 0 0 60px #ff00de; }
+    0%   { text-shadow: 0 0 8px #ff00de,  0 0 18px #ff00de, 4px 4px 0 #000; }
+    100% { text-shadow: 0 0 18px #ff00de, 0 0 40px #ff00de, 0 0 65px #ff00aa, 4px 4px 0 #000; }
 }
 
 @keyframes blink {
@@ -166,30 +284,13 @@ header p {
 }
 
 @keyframes flicker {
-    0% { opacity: 0.02; }
-    5% { opacity: 0.05; }
-    10% { opacity: 0.01; }
-    15% { opacity: 0.06; }
-    20% { opacity: 0.02; }
-    30% { opacity: 0.02; }
-    40% { opacity: 0.01; }
-    50% { opacity: 0.02; }
-    60% { opacity: 0; }
-    70% { opacity: 0.05; }
-    80% { opacity: 0; }
-    90% { opacity: 0.02; }
-    100% { opacity: 0.05; }
+    0%   { opacity: 0.7; }
+    10%  { opacity: 0.72; }
+    20%  { opacity: 0.68; }
+    40%  { opacity: 0.71; }
+    60%  { opacity: 0.69; }
+    75%  { opacity: 0.73; }
+    90%  { opacity: 0.70; }
+    100% { opacity: 0.71; }
 }
 
-footer {
-    margin-top: auto;
-    padding: 20px;
-    font-size: 1.2rem;
-    color: #666;
-    font-family: 'VT323', monospace;
-    text-align: center;
-    width: 100%;
-    border-top: 1px solid #333;
-    background: #000;
-    z-index: 10;
-}

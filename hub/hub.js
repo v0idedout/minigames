@@ -1,29 +1,19 @@
-// Random splash text for the header
-/*
 const splashes = [
-    "Insert Coin to Start",
-    "High Scores Only",
-    "Player 1 Ready",
-    "GLHF",
-    "Avoid the Red Cubes!",
-    "WASD to Move",
-    "Choose Your Destiny",
-    "Level Up!",
-    "Pause for Snacks"
+    "play some games while you're at it.",
+    "insert coin to continue.",
+    "high scores only.",
+    "player 1 ready.",
+    "choose your destiny.",
+    "avoid the red cubes!",
+    "wasd to move.",
+    "level up!",
+    "pause for snacks.",
+    "glhf.",
 ];
 
 document.addEventListener('DOMContentLoaded', () => {
-    const subtitle = document.querySelector('header p');
+    const subtitle = document.getElementById('subtitle');
     if (subtitle) {
-        const randomSplash = splashes[Math.floor(Math.random() * splashes.length)];
-        subtitle.textContent = randomSplash;
-    }
-});
-*/
-
-document.addEventListener('DOMContentLoaded', () => {
-    const subtitle = document.querySelector('header p');
-    if (subtitle) {
-        subtitle.textContent = "Play some games while you're at it.";
+        subtitle.textContent = splashes[Math.floor(Math.random() * splashes.length)];
     }
 });
