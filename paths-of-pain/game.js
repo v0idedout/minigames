@@ -26,6 +26,11 @@ let map = [];
 let enemies = [];
 let player = { x: 0, y: 0, vx: 0, vy: 0, speed: 5, size: 20, isHiding: false };
 let camera = { x: 0, y: 0 };
+let trail = [];
+let frameCounter = 0;
+let justDied = false;
+const TRAIL_MAX_AGE = 8000; // Trail points disappear after 8 seconds
+const TRAIL_SAMPLE_RATE = 3; // Record every 3rd frame to avoid too many points
 
 function lerp(start, end, amt) {
     return (1 - amt) * start + amt * end;
@@ -66,6 +71,7 @@ function generateMaze() {
     map[1][1] = 4;
     player.x = 1 * TILE_SIZE + TILE_SIZE / 2;
     player.y = 1 * TILE_SIZE + TILE_SIZE / 2;
+    trail = [];
 
     let endX = MAZE_COLS - 2, endY = MAZE_ROWS - 2;
     while (map[endY][endX] === 1) {
@@ -112,6 +118,8 @@ function generateMaze() {
 
 function loadLevel() {
     generateMaze();
+    // Seed trail with starting position so there's always a respawn point
+    trail = [{ x: player.x, y: player.y, time: Date.now() }];
     resetTimer();
 }
 
@@ -134,6 +142,7 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => keys[e.code] = false);
 
 function update() {
+    justDied = false;
     player.isHiding = !!keys['ShiftLeft'];
     const currentSpeed = player.isHiding ? player.speed * 0.5 : player.speed;
 
@@ -147,6 +156,18 @@ function update() {
 
     movePlayer(player.vx, 0);
     movePlayer(0, player.vy);
+    
+    // Record trail position every TRAIL_SAMPLE_RATE frames
+    frameCounter++;
+    if (frameCounter >= TRAIL_SAMPLE_RATE) {
+        trail.push({ x: player.x, y: player.y, time: Date.now() });
+        frameCounter = 0;
+    }
+    
+    // Remove expired trail points
+    const now = Date.now();
+    trail = trail.filter(point => (now - point.time) < TRAIL_MAX_AGE);
+    
     checkHazards();
     checkWin();
 
@@ -209,10 +230,10 @@ function checkHazards() {
         if (r >= 0 && r < MAZE_ROWS && c >= 0 && c < MAZE_COLS && map[r][c] === 2) {
             const dir = getSpikeDirection(r, c);
             const tx = p.x % TILE_SIZE, ty = p.y % TILE_SIZE;
-            if (dir === 'top'    && ty < SPIKE_SIZE)              die();
-            if (dir === 'bottom' && ty > TILE_SIZE - SPIKE_SIZE)  die();
-            if (dir === 'left'   && tx < SPIKE_SIZE)              die();
-            if (dir === 'right'  && tx > TILE_SIZE - SPIKE_SIZE)  die();
+            if (dir === 'top'    && ty < SPIKE_SIZE)              { die(); return; }
+            if (dir === 'bottom' && ty > TILE_SIZE - SPIKE_SIZE)  { die(); return; }
+            if (dir === 'left'   && tx < SPIKE_SIZE)              { die(); return; }
+            if (dir === 'right'  && tx > TILE_SIZE - SPIKE_SIZE)  { die(); return; }
         }
     }
 }
@@ -233,11 +254,48 @@ function checkWin() {
     }
 }
 
+function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius, color) {
+    let rot = Math.PI / 2 * 3;
+    let x = cx;
+    let y = cy;
+    const step = Math.PI / spikes;
+    
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - outerRadius);
+    for (let i = 0; i < spikes; i++) {
+        x = cx + Math.cos(rot) * outerRadius;
+        y = cy + Math.sin(rot) * outerRadius;
+        ctx.lineTo(x, y);
+        rot += step;
+        
+        x = cx + Math.cos(rot) * innerRadius;
+        y = cy + Math.sin(rot) * innerRadius;
+        ctx.lineTo(x, y);
+        rot += step;
+    }
+    ctx.lineTo(cx, cy - outerRadius);
+    ctx.closePath();
+    ctx.fill();
+}
+
 function die() {
-    player.x = 1.5 * TILE_SIZE;
-    player.y = 1.5 * TILE_SIZE;
-    camera.x = 0; camera.y = 0;
-    ctx.fillStyle = "red";
+    if (justDied) return;
+    justDied = true;
+    // Respawn at the end of the trail (oldest point)
+    if (trail.length > 0) {
+        const respawnPoint = trail[0];
+        player.x = respawnPoint.x;
+        player.y = respawnPoint.y;
+    } else {
+        // Fallback to start if no trail
+        player.x = 1.5 * TILE_SIZE;
+        player.y = 1.5 * TILE_SIZE;
+    }
+    // Clear trail to prevent line connecting death to respawn
+    trail = [];
+    camera.x -= camera.x * 0.1; camera.y -= camera.y * 0.1; // Slight camera adjustment
+    ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
@@ -288,10 +346,55 @@ function draw() {
         }
     }
 
+    // Draw trail with stylized effect
+    const now = Date.now();
+    
+    // Draw connecting line between trail points
+    if (trail.length > 1) {
+        ctx.strokeStyle = 'rgba(0, 255, 200, 0.3)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(trail[0].x, trail[0].y);
+        for (let i = 1; i < trail.length; i++) {
+            ctx.lineTo(trail[i].x, trail[i].y);
+        }
+        ctx.stroke();
+    }
+    
+    // Draw trail nodes as energy bursts
+    for (let i = 0; i < trail.length; i++) {
+        const point = trail[i];
+        const age = now - point.time;
+        const alpha = Math.max(0, 1 - (age / TRAIL_MAX_AGE));
+        
+        // Pulsating effect with sine wave
+        const pulse = 0.6 + 0.4 * Math.sin(now * 0.008 + i * 0.3);
+        const size = 8 * alpha * pulse;
+        
+        // Draw outer glow
+        ctx.fillStyle = `rgba(0, 255, 200, ${alpha * 0.4 * pulse})`;
+        ctx.shadowBlur = 20 * alpha;
+        ctx.shadowColor = `rgba(0, 255, 200, ${alpha})`;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, size * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        
+        // Draw inner bright core
+        ctx.fillStyle = `rgba(100, 255, 255, ${alpha * 0.8})`;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, size * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Draw star pattern overlay
+        if (alpha > 0.3) {
+            drawStar(ctx, point.x, point.y, 4, size * 0.8, size * 0.3, `rgba(0, 255, 200, ${alpha * 0.6})`);
+        }
+    }
+    
+    // Draw player
     ctx.fillStyle = player.isHiding ? 'rgba(255,255,255,0.3)' : '#fff';
-    ctx.shadowBlur = player.isHiding ? 5 : 10; ctx.shadowColor = '#fff';
     ctx.beginPath(); ctx.arc(player.x, player.y, player.size/2, 0, Math.PI*2); ctx.fill();
-    ctx.shadowBlur = 0;
 
     enemies.forEach(enemy => {
         ctx.save();
