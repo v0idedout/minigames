@@ -142,6 +142,7 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => keys[e.code] = false);
 
 function update() {
+    if (winState) return; // freeze game during win screen
     justDied = false;
     player.isHiding = !!keys['ShiftLeft'];
     const currentSpeed = player.isHiding ? player.speed * 0.5 : player.speed;
@@ -164,9 +165,10 @@ function update() {
         frameCounter = 0;
     }
     
-    // Remove expired trail points
+    // Remove expired trail points, but always keep the most recent as a respawn anchor
     const now = Date.now();
-    trail = trail.filter(point => (now - point.time) < TRAIL_MAX_AGE);
+    const filtered = trail.filter(point => (now - point.time) < TRAIL_MAX_AGE);
+    trail = filtered.length > 0 ? filtered : trail.slice(-1);
     
     checkHazards();
     checkWin();
@@ -246,11 +248,154 @@ function getSpikeDirection(r, c) {
     return 'top';
 }
 
+// ── Win screen state ──────────────────────────────────────────
+let winState = null; // null = not won, otherwise { time, particles, tick, nextCountdown }
+
 function checkWin() {
     const c = Math.floor(player.x / TILE_SIZE), r = Math.floor(player.y / TILE_SIZE);
-    if (map[r][c] === 3) {
-        alert("You found the exit! Loading next maze...");
+    if (map[r][c] === 3 && !winState) {
+        clearInterval(gameInterval);
+        const finalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+        winState = {
+            time: finalTime,
+            tick: 0,
+            nextCountdown: 4.0,
+            particles: buildWinParticles()
+        };
+        // block game input
+        isPlaying = false;
+    }
+}
+
+function buildWinParticles() {
+    const pts = [];
+    for (let i = 0; i < 120; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1.5 + Math.random() * 4;
+        pts.push({
+            x: canvas.width  / 2,
+            y: canvas.height / 2,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed - 2,
+            size: 3 + Math.random() * 5,
+            hue: Math.floor(Math.random() * 360),
+            alpha: 1,
+            life: 0.7 + Math.random() * 0.3
+        });
+    }
+    return pts;
+}
+
+function drawWinScreen() {
+    const ws = winState;
+    ws.tick++;
+
+    // ── dim overlay
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const cx = canvas.width  / 2;
+    const cy = canvas.height / 2;
+    const t  = ws.tick;
+
+    // ── update + draw particles
+    for (const p of ws.particles) {
+        p.x  += p.vx;
+        p.y  += p.vy;
+        p.vy += 0.12; // gravity
+        p.alpha -= 0.008 / p.life;
+        if (p.alpha < 0) p.alpha = 0;
+
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle = `hsl(${p.hue}, 100%, 65%)`;
+        ctx.shadowBlur  = 8;
+        ctx.shadowColor = `hsl(${p.hue}, 100%, 65%)`;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // ── pulsing outer ring
+    const ringPulse = 1 + 0.04 * Math.sin(t * 0.08);
+    ctx.save();
+    ctx.strokeStyle = `rgba(0, 255, 180, ${0.3 + 0.2 * Math.sin(t * 0.06)})`;
+    ctx.lineWidth = 2;
+    ctx.shadowBlur  = 30;
+    ctx.shadowColor = '#00ffb4';
+    ctx.beginPath();
+    ctx.arc(cx, cy, 200 * ringPulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, 155 * ringPulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // ── "YOU ESCAPED" title
+    const titleScale = Math.min(1, t / 18);
+    ctx.save();
+    ctx.translate(cx, cy - 70);
+    ctx.scale(titleScale, titleScale);
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font         = 'bold 52px "Courier New", monospace';
+    ctx.shadowBlur   = 40;
+    ctx.shadowColor  = '#00ffb4';
+    ctx.fillStyle    = '#00ffb4';
+    ctx.fillText('YOU ESCAPED', 0, 0);
+    // white inner text
+    ctx.shadowBlur = 0;
+    ctx.fillStyle  = '#ffffff';
+    ctx.font       = 'bold 50px "Courier New", monospace';
+    ctx.fillText('YOU ESCAPED', 0, 0);
+    ctx.restore();
+
+    // ── time display
+    if (t > 14) {
+        const timeAlpha = Math.min(1, (t - 14) / 12);
+        ctx.save();
+        ctx.globalAlpha  = timeAlpha;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font         = '22px "Courier New", monospace';
+        ctx.fillStyle    = '#888';
+        ctx.fillText('TIME', cx, cy - 4);
+        ctx.font         = 'bold 46px "Courier New", monospace';
+        ctx.shadowBlur   = 20;
+        ctx.shadowColor  = '#ff3e3e';
+        ctx.fillStyle    = '#ff3e3e';
+        ctx.fillText(ws.time + 's', cx, cy + 40);
+        ctx.restore();
+    }
+
+    // ── countdown to next maze
+    ws.nextCountdown -= 1 / 60;
+    if (ws.nextCountdown < 0) ws.nextCountdown = 0;
+
+    if (t > 28) {
+        const cdAlpha = Math.min(1, (t - 28) / 10);
+        const cdInt   = Math.ceil(ws.nextCountdown);
+        ctx.save();
+        ctx.globalAlpha  = cdAlpha;
+        ctx.textAlign    = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font         = '16px "Courier New", monospace';
+        ctx.fillStyle    = '#666';
+        ctx.fillText('NEXT MAZE IN', cx, cy + 108);
+        ctx.font         = 'bold 38px "Courier New", monospace';
+        ctx.shadowBlur   = 14;
+        ctx.shadowColor  = '#ffffff';
+        ctx.fillStyle    = '#ffffff';
+        ctx.fillText(cdInt > 0 ? cdInt : '...', cx, cy + 145);
+        ctx.restore();
+    }
+
+    // ── trigger next level
+    if (ws.nextCountdown <= 0 && t > 28) {
+        winState = null;
         loadLevel();
+        isPlaying = false; // wait for keypress to start timer
     }
 }
 
@@ -279,24 +424,120 @@ function drawStar(ctx, cx, cy, spikes, outerRadius, innerRadius, color) {
     ctx.fill();
 }
 
+let respawnFx = null;   // { x, y, tick, particles, flashAlpha }
+
+function triggerRespawnFx(x, y) {
+    const particles = [];
+    for (let i = 0; i < 28; i++) {
+        const angle = (i / 28) * Math.PI * 2;
+        const speed = 2.5 + Math.random() * 3.5;
+        particles.push({
+            x, y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            alpha: 1,
+            size: 3 + Math.random() * 3
+        });
+    }
+    respawnFx = { x, y, tick: 0, particles, flashAlpha: 0.45 };
+}
+
+function drawRespawnFx() {
+    const fx = respawnFx;
+    fx.tick++;
+
+    // ── screen flash — drawn in screen space (ctx not translated)
+    if (fx.flashAlpha > 0) {
+        ctx.save();
+        ctx.fillStyle = `rgba(255, 40, 40, ${fx.flashAlpha})`;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+        fx.flashAlpha -= 0.035;
+    }
+
+    // everything below is in world space (ctx already translated by camera)
+    const t = fx.tick;
+
+    // ── shockwave rings expanding outward
+    for (let ring = 0; ring < 2; ring++) {
+        const delay  = ring * 6;
+        const radius = Math.max(0, (t - delay) * 3.5);
+        const alpha  = Math.max(0, 1 - (t - delay) / 18);
+        if (alpha <= 0) continue;
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 80, 80, ${alpha})`;
+        ctx.lineWidth   = 2.5 - ring * 0.8;
+        ctx.shadowBlur  = 12;
+        ctx.shadowColor = '#ff2222';
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, radius, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    // ── respawn beacon: pulsing glow at the landing spot
+    if (t < 40) {
+        const beaconAlpha = Math.max(0, 1 - t / 40);
+        const beaconSize  = player.size * (0.6 + 0.4 * Math.sin(t * 0.4));
+        ctx.save();
+        ctx.shadowBlur  = 20;
+        ctx.shadowColor = '#ffffff';
+        ctx.fillStyle   = `rgba(255, 255, 255, ${beaconAlpha * 0.5})`;
+        ctx.beginPath();
+        ctx.arc(fx.x, fx.y, beaconSize, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // ── debris particles flying outward then fading
+    let anyAlive = false;
+    for (const p of fx.particles) {
+        p.x     += p.vx;
+        p.y     += p.vy;
+        p.vx    *= 0.88;
+        p.vy    *= 0.88;
+        p.alpha -= 0.038;
+        if (p.alpha <= 0) continue;
+        anyAlive = true;
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.fillStyle   = '#ff4444';
+        ctx.shadowBlur  = 6;
+        ctx.shadowColor = '#ff0000';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    // ── clear once everything has faded
+    if (!anyAlive && t >= 40 && fx.flashAlpha <= 0) {
+        respawnFx = null;
+    }
+}
+
 function die() {
     if (justDied) return;
     justDied = true;
-    // Respawn at the end of the trail (oldest point)
-    if (trail.length > 0) {
-        const respawnPoint = trail[0];
-        player.x = respawnPoint.x;
-        player.y = respawnPoint.y;
-    } else {
-        // Fallback to start if no trail
-        player.x = 1.5 * TILE_SIZE;
-        player.y = 1.5 * TILE_SIZE;
-    }
-    // Clear trail to prevent line connecting death to respawn
-    trail = [];
-    camera.x -= camera.x * 0.1; camera.y -= camera.y * 0.1; // Slight camera adjustment
-    ctx.fillStyle = "rgba(255, 0, 0, 0.3)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Respawn at the oldest trail point — furthest back along the path the player walked.
+    // trail[0] is the oldest surviving point (up to TRAIL_MAX_AGE ms ago), acting as a
+    // rolling checkpoint. If the trail is somehow empty, fall back to wherever the player
+    // currently is (no punishment) rather than snapping to the map origin.
+    const respawnPoint = trail.length > 0
+        ? trail[0]
+        : { x: player.x, y: player.y };
+
+    player.x = respawnPoint.x;
+    player.y = respawnPoint.y;
+
+    // Seed a fresh trail from the respawn spot so the next death always has
+    // a valid anchor and never regresses further than this point.
+    trail = [{ x: player.x, y: player.y, time: Date.now() }];
+
+    camera.x -= camera.x * 0.1; camera.y -= camera.y * 0.1;
+
+    triggerRespawnFx(player.x, player.y);
 }
 
 function draw() {
@@ -393,6 +634,8 @@ function draw() {
     }
     
     // Draw player
+    if (respawnFx) drawRespawnFx();
+
     ctx.fillStyle = player.isHiding ? 'rgba(255,255,255,0.3)' : '#fff';
     ctx.beginPath(); ctx.arc(player.x, player.y, player.size/2, 0, Math.PI*2); ctx.fill();
 
@@ -406,6 +649,12 @@ function draw() {
     });
 
     ctx.restore();
+
+    // ── Win screen overlay (drawn on top, in screen space)
+    if (winState) {
+        drawWinScreen();
+    }
+
     requestAnimationFrame(() => { update(); draw(); });
 }
 
