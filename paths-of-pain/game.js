@@ -446,9 +446,10 @@ function drawRespawnFx() {
     const fx = respawnFx;
     fx.tick++;
 
-    // ── screen flash — drawn in screen space (ctx not translated)
+    // ── screen flash — drawn in screen space, reset transform so camera offset is ignored
     if (fx.flashAlpha > 0) {
         ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.fillStyle = `rgba(255, 40, 40, ${fx.flashAlpha})`;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.restore();
