@@ -107,3 +107,18 @@ canvas {
 .warning-semi {
     box-shadow: inset 0 0 160px rgba(0, 30, 180, 0.7);
 }
+
+.demi-emitter {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    z-index: 5;
+    mix-blend-mode: screen;
+    box-shadow: inset 0 0 100px rgba(140, 0, 30, 0);
+    transition: box-shadow 0.8s;
+}
+
+.warning-demi {
+    box-shadow: inset 0 0 160px rgba(160, 0, 30, 0.72);
+}

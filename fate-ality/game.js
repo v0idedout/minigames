@@ -6,6 +6,7 @@ const starOverlay = document.getElementById("star-overlay");
 const triangleOverlay = document.getElementById("triangle-overlay");
 const raintangleOverlay = document.getElementById("raintangle-overlay");
 const semiOverlay = document.getElementById("semi-overlay");
+const demiOverlay = document.getElementById("demi-overlay");
 const blocker = document.getElementById("blocker");
 
 canvas.width = window.innerWidth;
@@ -67,11 +68,32 @@ let semi = {
     height: 44,             // semi-circle height (half)
     distance: 0,            // distance from player (closes when looked at)
     spawnChance: 0.18,      // chance per new room chunk
+    lastSemiChunkStart: -99999, // x of the room where semi last spawned
     spiralAngle: 0,         // rotating spiral
     approachSpeed: 1.2,     // pixels per frame when stared at
     retreatSpeed: 0.4,      // pixels per frame when looked away
     minDistance: 0,         // dies the player when distance <= minDistance
     tintAlpha: 0            // room tint alpha (animated)
+};
+
+// Demi: like Semi but you must look AT it to push it back
+let demi = {
+    active: false,
+    fadeState: 'none',
+    alpha: 0,
+    fadeSpeed: 0.025,
+    roomIndex: -1,
+    x: 0,
+    y: 0,
+    width: 90,
+    height: 44,
+    distance: 0,
+    spawnChance: 0.16,
+    lastDemiChunkStart: -99999, // x of the room where demi last spawned
+    spiralAngle: 0,
+    approachSpeed: 1.2,
+    retreatSpeed: 0.4,
+    tintAlpha: 0
 };
 
 const HALL_HEIGHT = 200;
@@ -110,20 +132,61 @@ function init() {
     semi.alpha = 0;
     semi.roomIndex = -1;
     semi.tintAlpha = 0;
+    semi.lastSemiChunkStart = -99999;
     semiOverlay.classList.remove('warning-semi');
+    demi.active = false;
+    demi.fadeState = 'none';
+    demi.alpha = 0;
+    demi.roomIndex = -1;
+    demi.tintAlpha = 0;
+    demi.lastDemiChunkStart = -99999;
+    demiOverlay.classList.remove('warning-demi');
     statusEl.innerText = "READY";
     statusEl.style.color = "#00ff00";
 }
 
 function generateMapChunk(startX) {
+    const ROOM_STEP   = ROOM_WIDTH + 100;          // 900 units per room slot
+    const SAME_GAP    = 5 * ROOM_STEP;             // 5 rooms: back-to-back prevention (same type)
+    const CROSS_GAP   = 3 * ROOM_STEP;             // 3 rooms: cross-separation between semi & demi
+    const isFirstChunk = startX === 0;
+
+    let semiTagged = false;
+    let demiTagged = false;
     let x = startX;
+
     for (let i = 0; i < 5; i++) {
+        const roomX = x;
+
+        // --- Semi eligibility ---
+        const semiTooSoonSame  = (roomX - semi.lastSemiChunkStart) < SAME_GAP;
+        const semiTooSoonCross = (roomX - demi.lastDemiChunkStart) < CROSS_GAP;
+        const allowSemi = !isFirstChunk && !semiTooSoonSame && !semiTooSoonCross
+                          && !semi.active && !demi.active && !semiTagged && !demiTagged;
+        const semiTag = allowSemi && Math.random() < semi.spawnChance;
+        if (semiTag) {
+            semiTagged = true;
+            semi.lastSemiChunkStart = roomX;
+        }
+
+        // --- Demi eligibility ---
+        const demiTooSoonSame  = (roomX - demi.lastDemiChunkStart) < SAME_GAP;
+        const demiTooSoonCross = (roomX - semi.lastSemiChunkStart) < CROSS_GAP;
+        const allowDemi = !isFirstChunk && !demiTooSoonSame && !demiTooSoonCross
+                          && !demi.active && !semi.active && !demiTagged && !semiTagged;
+        const demiTag = allowDemi && Math.random() < demi.spawnChance;
+        if (demiTag) {
+            demiTagged = true;
+            demi.lastDemiChunkStart = roomX;
+        }
+
         map.push({
             type: 'hall',
-            x: x,
+            x: roomX,
             width: ROOM_WIDTH,
-            safeSpot: Math.random() < 0.7 ? { x: x + 200 + Math.random() * (ROOM_WIDTH - 400) } : null,
-            hasSemi: !semi.active && Math.random() < semi.spawnChance
+            safeSpot: Math.random() < 0.7 ? { x: roomX + 200 + Math.random() * (ROOM_WIDTH - 400) } : null,
+            hasSemi: semiTag,
+            hasDemi: demiTag
         });
         x += ROOM_WIDTH;
         map.push({ type: 'door', x: x, width: 100 });
@@ -215,7 +278,8 @@ function update() {
 
     // Star Enemy
     if (!starEnemy.active) {
-        starEnemy.timer++;
+        // Freeze star timer while raintangle is active or warning (can't dodge both)
+        if (!raintangle.active && !raintangle.warningSign) starEnemy.timer++;
         if (starEnemy.timer > starEnemy.spawnThreshold - 200 && starEnemy.timer < starEnemy.spawnThreshold) {
             starEnemy.warningSign = true;
             starOverlay.classList.add('warning-star');
@@ -298,7 +362,8 @@ function update() {
 
     // Raintangle
     if (!raintangle.active) {
-        raintangle.timer++;
+        // Freeze raintangle timer while star is active or warning (can't dodge both)
+        if (!starEnemy.active && !starEnemy.warningSign) raintangle.timer++;
         if (raintangle.timer > raintangle.spawnThreshold - 180 && raintangle.timer < raintangle.spawnThreshold) {
             raintangle.warningSign = true;
             raintangleOverlay.classList.add('warning-raintangle');
@@ -308,7 +373,7 @@ function update() {
             raintangle.duration = 0;
             raintangle.drops = [];
             raintangle.warningSign = false;
-            raintangleOverlay.classList.remove('warning-raintangle');
+            // Keep glow on — it stays for the duration of the attack
         }
     } else {
         raintangle.duration++;
@@ -351,6 +416,7 @@ function update() {
         // When maxDuration is hit, start dying — stop spawning and disable hitbox
         if (raintangle.duration > raintangle.maxDuration && !raintangle.dying) {
             raintangle.dying = true;
+            raintangleOverlay.classList.remove('warning-raintangle');
         }
 
         // Fully deactivate once all remaining drops have drained away
@@ -448,12 +514,89 @@ function update() {
         }
     }
 
+    // Demi – room-based entity: approaches when player looks AWAY from it
+    if (!demi.active) {
+        if (demi.fadeState === 'out') {
+            demi.alpha -= demi.fadeSpeed;
+            if (demi.alpha <= 0) {
+                demi.alpha = 0;
+                demi.fadeState = 'none';
+                demiOverlay.classList.remove('warning-demi');
+            }
+        }
+
+        const demiRoom = map.find(s => s.type === 'hall' && s.hasDemi &&
+            player.x >= s.x && player.x < s.x + s.width);
+        if (demiRoom) {
+            demi.active = true;
+            demi.fadeState = 'in';
+            demi.alpha = 0;
+            demi.roomIndex = map.indexOf(demiRoom);
+            demi.x = demiRoom.x + demiRoom.width - demi.width - 20;
+            demi.y = canvas.height / 2;
+            demi.distance = demiRoom.width - demi.width - 40;
+            demiOverlay.classList.add('warning-demi');
+            demiRoom.hasDemi = false;
+        }
+    } else {
+        if (demi.fadeState === 'in') {
+            demi.alpha += demi.fadeSpeed;
+            if (demi.alpha >= 1) {
+                demi.alpha = 1;
+                demi.fadeState = 'alive';
+            }
+        }
+
+        demi.spiralAngle += 0.04;
+
+        const demiScreenX = demi.x - camera.x;
+        const demiScreenY = demi.y;
+        const angleToDemi = Math.atan2(demiScreenY - player.y, demiScreenX - (player.x - camera.x));
+        const pointerAngleDemi = Math.atan2(mouse.y - player.y, mouse.x - (player.x - camera.x));
+        let angleDiffDemi = Math.abs(angleToDemi - pointerAngleDemi);
+        if (angleDiffDemi > Math.PI) angleDiffDemi = Math.PI * 2 - angleDiffDemi;
+        const isLookingAtDemi = angleDiffDemi < Math.PI / 3;
+
+        if (isLookingAtDemi) {
+            // Looking at it: push it back toward far wall
+            const roomSeg = map[demi.roomIndex];
+            if (roomSeg) {
+                const maxDist = roomSeg.width - demi.width - 40;
+                if (demi.distance < maxDist) demi.distance += demi.retreatSpeed;
+            }
+        } else {
+            // Not looking: it creeps closer
+            demi.distance -= demi.approachSpeed;
+        }
+
+        const demiRoomSeg = map[demi.roomIndex];
+        if (demiRoomSeg) {
+            demi.x = demiRoomSeg.x + demi.distance;
+            demi.y = canvas.height / 2;
+
+            if (player.x < demiRoomSeg.x || player.x >= demiRoomSeg.x + demiRoomSeg.width) {
+                demi.active = false;
+                demi.fadeState = 'out';
+            }
+        }
+
+        const demiLeft  = demi.x - demi.width / 2;
+        const demiRight = demi.x + demi.width / 2;
+        const demiTop   = demi.y;
+        const demiBot   = demi.y + demi.height;
+        if (player.x >= demiLeft  - player.radius && player.x <= demiRight + player.radius &&
+            player.y >= demiTop   - player.radius && player.y <= demiBot   + player.radius) {
+            die("Demi swallowed your gaze.", "Keep your pointer aimed AT Demi to hold it back!");
+        }
+    }
+
     // Update status text based on combined warning/active state
     const starWarning = starEnemy.warningSign || starEnemy.active;
     const triWarning = triangleEnemy.warningSign || triangleEnemy.active;
     const rainWarning = raintangle.warningSign || raintangle.active;
     const semiWarning = semi.active || semi.fadeState === 'out';
-    const activeCount = [starWarning, triWarning, rainWarning, semiWarning].filter(Boolean).length;
+    const demiWarning = demi.active || demi.fadeState === 'out';
+    const activeCount = [starWarning, triWarning, rainWarning, semiWarning, demiWarning].filter(Boolean).length;
 
     if (activeCount >= 3) {
         statusEl.innerText = "!!! HIDE + WALLS + DOOR !!!";
@@ -483,6 +626,18 @@ function update() {
         statusEl.innerText = "!!! LOOK AWAY + GET TO A DOOR !!!";
         statusEl.style.color = "#aa88ff";
         statusEl.style.textShadow = "0 0 8px #0044ff, 0 0 16px red";
+    } else if (demiWarning && starWarning) {
+        statusEl.innerText = "!!! LOOK AT DEMI + HIDE !!!";
+        statusEl.style.color = "#ff8877";
+        statusEl.style.textShadow = "0 0 8px #cc1133, 0 0 16px yellow";
+    } else if (demiWarning && triWarning) {
+        statusEl.innerText = "!!! LOOK AT DEMI + HUG WALLS !!!";
+        statusEl.style.color = "#ff6688";
+        statusEl.style.textShadow = "0 0 8px #cc1133, 0 0 16px cyan";
+    } else if (demiWarning && rainWarning) {
+        statusEl.innerText = "!!! LOOK AT DEMI + GET TO A DOOR !!!";
+        statusEl.style.color = "#ff4455";
+        statusEl.style.textShadow = "0 0 8px #cc1133, 0 0 16px red";
     } else if (starWarning) {
         statusEl.innerText = "!!! HIDE !!!";
         statusEl.style.color = "yellow";
@@ -499,6 +654,10 @@ function update() {
         statusEl.innerText = "!!! LOOK AWAY !!!";
         statusEl.style.color = "#6699ff";
         statusEl.style.textShadow = "0 0 10px #0033cc";
+    } else if (demiWarning) {
+        statusEl.innerText = "!!! LOOK AT DEMI !!!";
+        statusEl.style.color = "#ff3355";
+        statusEl.style.textShadow = "0 0 10px #aa0020";
     } else {
         statusEl.innerText = "SAFE";
         statusEl.style.color = "#00ff00";
@@ -595,6 +754,68 @@ function draw() {
         });
         ctx.globalAlpha = 1;
         ctx.shadowBlur = 0;
+        ctx.restore();
+    }
+
+    // Demi
+    if (demi.active || demi.fadeState === 'out') {
+        const dx = demi.x;
+        const dy = demi.y;
+        const dw = demi.width;
+        const dh = demi.height;
+        const dalpha = demi.alpha;
+
+        // Dark red room tint
+        if (demi.roomIndex >= 0 && demi.roomIndex < map.length) {
+            const roomSeg = map[demi.roomIndex];
+            ctx.save();
+            ctx.globalAlpha = 0.45 * dalpha;
+            ctx.fillStyle = "rgba(80, 0, 10, 1)";
+            ctx.fillRect(roomSeg.x, canvas.height / 2 - 70, roomSeg.width, 140);
+            ctx.globalAlpha = 1;
+            ctx.restore();
+        }
+
+        ctx.save();
+        ctx.globalAlpha = dalpha;
+        ctx.translate(dx, dy);
+
+        // Body: elongated red semi-circle (dome DOWN, flat top — upside-down)
+        ctx.save();
+        ctx.shadowBlur = 28;
+        ctx.shadowColor = "#ff2244";
+        ctx.beginPath();
+        ctx.ellipse(0, 0, dw / 2, dh, 0, 0, Math.PI, false);
+        ctx.closePath();
+        ctx.fillStyle = "#cc1133";
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+
+        // Rotating white spiral clipped inside the dome
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(0, 0, dw / 2 - 3, dh - 3, 0, 0, Math.PI, false);
+        ctx.closePath();
+        ctx.clip();
+
+        ctx.rotate(demi.spiralAngle);
+        const dSpiralTurns = 3;
+        const dSpiralMaxR = Math.min(dw / 2, dh) - 8;
+        ctx.beginPath();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "round";
+        for (let t = 0; t <= dSpiralTurns * Math.PI * 2; t += 0.05) {
+            const r = (t / (dSpiralTurns * Math.PI * 2)) * dSpiralMaxR;
+            const px = Math.cos(t) * r;
+            const py = Math.sin(t) * r;
+            if (t === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.restore();
+
         ctx.restore();
     }
 
